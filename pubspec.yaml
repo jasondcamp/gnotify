@@ -1,7 +1,7 @@
 name: gnotify
 description: "macOS menubar app that watches GitHub for pull requests awaiting your review."
 publish_to: 'none'
-version: 1.0.0+7
+version: 1.0.0+8
 
 environment:
   sdk: ^3.10.7

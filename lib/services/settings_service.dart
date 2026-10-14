@@ -10,6 +10,9 @@ class Settings {
   final List<String> targets;
   final int pollIntervalSeconds;
 
+  /// Notify when a PR starts asking one of the targets for review.
+  final bool notifyReviewRequests;
+
   /// Notify when a PR the token's user authored gets an approving review.
   final bool notifyApprovals;
 
@@ -18,6 +21,7 @@ class Settings {
     this.org = '',
     this.targets = const [],
     this.pollIntervalSeconds = 60,
+    this.notifyReviewRequests = true,
     this.notifyApprovals = true,
   });
 
@@ -28,6 +32,7 @@ class Settings {
     String? org,
     List<String>? targets,
     int? pollIntervalSeconds,
+    bool? notifyReviewRequests,
     bool? notifyApprovals,
   }) =>
       Settings(
@@ -35,6 +40,7 @@ class Settings {
         org: org ?? this.org,
         targets: targets ?? this.targets,
         pollIntervalSeconds: pollIntervalSeconds ?? this.pollIntervalSeconds,
+        notifyReviewRequests: notifyReviewRequests ?? this.notifyReviewRequests,
         notifyApprovals: notifyApprovals ?? this.notifyApprovals,
       );
 }
@@ -44,6 +50,7 @@ class SettingsService extends ChangeNotifier {
   static const _kOrg = 'github_org';
   static const _kTargets = 'github_targets';
   static const _kPollInterval = 'poll_interval_seconds';
+  static const _kNotifyReviewRequests = 'notify_review_requests';
   static const _kNotifyApprovals = 'notify_approvals';
   static const _kNotifiedIds = 'notified_pr_ids';
   static const _kApprovedIds = 'approved_pr_ids';
@@ -58,6 +65,7 @@ class SettingsService extends ChangeNotifier {
       org: prefs.getString(_kOrg) ?? '',
       targets: prefs.getStringList(_kTargets) ?? const [],
       pollIntervalSeconds: prefs.getInt(_kPollInterval) ?? 60,
+      notifyReviewRequests: prefs.getBool(_kNotifyReviewRequests) ?? true,
       notifyApprovals: prefs.getBool(_kNotifyApprovals) ?? true,
     );
     notifyListeners();
@@ -72,6 +80,7 @@ class SettingsService extends ChangeNotifier {
       s.targets.map((t) => t.trim()).where((t) => t.isNotEmpty).toList(),
     );
     await prefs.setInt(_kPollInterval, s.pollIntervalSeconds.clamp(15, 3600));
+    await prefs.setBool(_kNotifyReviewRequests, s.notifyReviewRequests);
     await prefs.setBool(_kNotifyApprovals, s.notifyApprovals);
     await load();
   }
@@ -81,8 +90,13 @@ class SettingsService extends ChangeNotifier {
   Future<Set<int>> loadNotifiedIds() => _loadIds(_kNotifiedIds);
   Future<void> saveNotifiedIds(Set<int> ids) => _saveIds(_kNotifiedIds, ids);
 
-  /// IDs of the user's own PRs already announced as approved.
-  Future<Set<int>> loadApprovedIds() => _loadIds(_kApprovedIds);
+  /// IDs of the user's own PRs already announced as approved. Null when the
+  /// app has never recorded a baseline, so the first pass can stay silent.
+  Future<Set<int>?> loadApprovedIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!prefs.containsKey(_kApprovedIds)) return null;
+    return _loadIds(_kApprovedIds);
+  }
   Future<void> saveApprovedIds(Set<int> ids) => _saveIds(_kApprovedIds, ids);
 
   Future<Set<int>> _loadIds(String key) async {

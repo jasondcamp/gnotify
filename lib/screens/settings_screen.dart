@@ -31,6 +31,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late List<String> _targets;
 
   bool _obscureToken = true;
+  late bool _notifyReviewRequests;
   late bool _notifyApprovals;
   bool _testing = false;
   bool _saving = false;
@@ -46,6 +47,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _org = TextEditingController(text: s.org);
     _interval = TextEditingController(text: '${s.pollIntervalSeconds}');
     _targets = List.of(s.targets);
+    _notifyReviewRequests = s.notifyReviewRequests;
     _notifyApprovals = s.notifyApprovals;
   }
 
@@ -141,6 +143,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       org: org,
       targets: _targets,
       pollIntervalSeconds: interval,
+      notifyReviewRequests: _notifyReviewRequests,
       notifyApprovals: _notifyApprovals,
     ));
     if (!mounted) return;
@@ -209,28 +212,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 4),
                   SizedBox(width: 120, child: _field(_interval, hint: '60')),
                   const SizedBox(height: 12),
-                  _label('Approvals'),
+                  _label('Notifications'),
                   const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      SizedBox(
-                        height: 28,
-                        child: FittedBox(
-                          child: Switch(
-                            value: _notifyApprovals,
-                            activeTrackColor: const Color(0xFF6366F1),
-                            onChanged: (v) => setState(() => _notifyApprovals = v),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Notify me when a PR I opened gets approved',
-                          style: GoogleFonts.inter(fontSize: 12, color: Colors.black87),
-                        ),
-                      ),
-                    ],
+                  _toggle(
+                    'Review requests for the users and teams above',
+                    _notifyReviewRequests,
+                    (v) => setState(() => _notifyReviewRequests = v),
+                  ),
+                  _toggle(
+                    'Approvals on PRs I opened',
+                    _notifyApprovals,
+                    (v) => setState(() => _notifyApprovals = v),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Both off: the list and badge still update, nothing pops up.',
+                    style: GoogleFonts.inter(fontSize: 10, color: const Color(0xFF9CA3AF)),
                   ),
                   if (_testResult != null) ...[
                     const SizedBox(height: 12),
@@ -366,6 +363,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _toggle(String text, bool value, ValueChanged<bool> onChanged) {
+    return Row(
+      children: [
+        SizedBox(
+          height: 28,
+          child: FittedBox(
+            child: Switch(
+              value: value,
+              activeTrackColor: const Color(0xFF6366F1),
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(text, style: GoogleFonts.inter(fontSize: 12, color: Colors.black87)),
+        ),
+      ],
     );
   }
 

@@ -21,6 +21,12 @@ class WatcherService extends ChangeNotifier {
   Set<int> _notifiedIds = {};
   Set<int> _approvedIds = {};
 
+  /// True until the approved set has been recorded once. The first pass after
+  /// install, or after the approvals toggle is switched on, only records what
+  /// is already approved instead of announcing all of it.
+  bool _approvalsNeedBaseline = true;
+  bool _lastNotifyApprovals = true;
+
   /// Requested reviewers per PR id, keyed on the PR's updated_at so a PR is
   /// only re-fetched when it changes.
   final Map<int, ({DateTime updatedAt, RequestedReviewers reviewers})> _reviewerCache = {};
@@ -42,14 +48,20 @@ class WatcherService extends ChangeNotifier {
 
   Future<void> start() async {
     _notifiedIds = await settingsService.loadNotifiedIds();
-    _approvedIds = await settingsService.loadApprovedIds();
+    final approved = await settingsService.loadApprovedIds();
+    _approvedIds = approved ?? {};
+    _approvalsNeedBaseline = approved == null;
+    _lastNotifyApprovals = settingsService.settings.notifyApprovals;
     settingsService.addListener(_onSettingsChanged);
     _restartTimer();
     await refresh();
   }
 
   void _onSettingsChanged() {
-    github.token = settingsService.settings.token;
+    final s = settingsService.settings;
+    github.token = s.token;
+    if (s.notifyApprovals && !_lastNotifyApprovals) _approvalsNeedBaseline = true;
+    _lastNotifyApprovals = s.notifyApprovals;
     _restartTimer();
     refresh();
   }
@@ -110,8 +122,10 @@ class WatcherService extends ChangeNotifier {
       final label = list.length == 1 ? '1 PR awaiting review' : '${list.length} PRs awaiting review';
       _pushTooltip('gnotify - $label');
 
+      // Seen ids are tracked even with notifications off, so switching them
+      // on later only announces PRs that arrive after that point.
       for (final pr in fresh) {
-        await _notify(pr);
+        if (settings.notifyReviewRequests) await _notify(pr);
         _notifiedIds.add(pr.id);
       }
       if (fresh.isNotEmpty) await settingsService.saveNotifiedIds(_notifiedIds);
@@ -162,6 +176,13 @@ class WatcherService extends ChangeNotifier {
     final currentIds = approved.map((p) => p.id).toSet();
     final fresh = approved.where((p) => !_approvedIds.contains(p.id)).toList();
     _approvedIds = _approvedIds.intersection(currentIds);
+
+    if (_approvalsNeedBaseline) {
+      _approvedIds = currentIds;
+      _approvalsNeedBaseline = false;
+      await settingsService.saveApprovedIds(_approvedIds);
+      return;
+    }
 
     for (final pr in fresh) {
       final approvers = await github.getApprovers(pr.repoFullName, pr.number);
