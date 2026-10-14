@@ -4,7 +4,7 @@ import ServiceManagement
 import UserNotifications
 
 @main
-class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate {
+class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate, NSPopoverDelegate {
   var statusItem: NSStatusItem!
   var popover: NSPopover!
   var channel: FlutterMethodChannel!
@@ -24,6 +24,7 @@ class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate {
     popover.contentSize = NSSize(width: 420, height: 520)
     popover.behavior = .transient  // auto-dismiss on click outside
     popover.contentViewController = flutterVC
+    popover.delegate = self
 
     // Status bar icon; the length is variable so a count can sit beside it
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -99,9 +100,22 @@ class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate {
   }
 
   func showPopover(_ sender: NSStatusBarButton) {
+    // An LSUIElement app is not the active app when its status item is
+    // clicked, so without this the popover draws but keystrokes keep going
+    // to whichever app was frontmost and every text field looks read-only.
+    NSApp.activate(ignoringOtherApps: true)
     popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
-    popover.contentViewController?.view.window?.makeKey()
+    if let window = popover.contentViewController?.view.window {
+      window.makeKeyAndOrderFront(nil)
+      window.makeFirstResponder(popover.contentViewController?.view)
+    }
     channel.invokeMethod("popoverOpened", arguments: nil)
+  }
+
+  // Clicking outside closes the transient popover; give focus back so the
+  // app the user was in does not stay deactivated.
+  func popoverDidClose(_ notification: Notification) {
+    NSApp.hide(nil)
   }
 
   func showContextMenu(_ sender: NSStatusBarButton) {
