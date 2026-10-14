@@ -17,8 +17,8 @@ rm -f ~/Desktop/${APP_LOWER}.zip ~/Desktop/${APP_LOWER}.dmg
 rm -f "/tmp/gnotify.zip"
 rm -rf "$ARCHIVE_PATH"
 
-echo "==> Bumping build number..."
-perl -i -pe 's/^(version:\s+\S+\+)(\d+)/$1 . ($2 + 1)/e' pubspec.yaml
+echo "==> Bumping patch version..."
+perl -i -pe 's/^(version:\s+\d+\.\d+\.)(\d+)(\+\d+)?/$1 . ($2 + 1) . ($3 \/\/ "")/e' pubspec.yaml
 grep '^version:' pubspec.yaml
 
 echo "==> Building release..."

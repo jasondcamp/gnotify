@@ -31,7 +31,7 @@ Produces a release build and copies it to `/Applications/gnotify.app`.
 ./build_release.sh
 ```
 
-The script bumps the build number, builds, archives with the Developer ID
+The script bumps the patch version (1.0.0 -> 1.0.1), builds, archives with the Developer ID
 identity and hardened runtime, submits to Apple with
 `xcrun notarytool --keychain-profile notarytool`, staples the ticket and produces
 `~/Desktop/gnotify.zip` and `~/Desktop/gnotify.dmg`.
