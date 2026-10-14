@@ -11,6 +11,44 @@ class GitHubException implements Exception {
   String toString() => 'GitHub $statusCode: $message';
 }
 
+/// Who a PR is currently asking for review, straight from the PR itself.
+/// Users are logins; teams are `owner/slug`. Both lowercased.
+class RequestedReviewers {
+  final Set<String> users;
+  final Set<String> teams;
+  const RequestedReviewers({required this.users, required this.teams});
+
+  factory RequestedReviewers.fromPullJson(Map<String, dynamic> j, {required String owner}) {
+    final users = ((j['requested_reviewers'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>()
+        .map((u) => (u['login'] as String? ?? '').toLowerCase())
+        .where((u) => u.isNotEmpty)
+        .toSet();
+    final teams = ((j['requested_teams'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>()
+        .map((t) => '${owner.toLowerCase()}/${(t['slug'] as String? ?? '').toLowerCase()}')
+        .where((t) => !t.endsWith('/'))
+        .toSet();
+    return RequestedReviewers(users: users, teams: teams);
+  }
+
+  /// The configured targets this PR is directly asking for. GitHub's
+  /// `review-requested:user` search also matches requests sent to a team the
+  /// user belongs to, so the search result alone over-reports the user. When
+  /// no configured target is named directly, the actual requested teams are
+  /// returned instead so the chip still tells the truth.
+  Set<String> resolve(Iterable<String> configuredTargets) {
+    final direct = <String>{};
+    for (final t in configuredTargets) {
+      final key = t.toLowerCase();
+      if (key.contains('/') ? teams.contains(key) : users.contains(key)) direct.add(t);
+    }
+    if (direct.isNotEmpty) return direct;
+    if (teams.isNotEmpty) return teams;
+    return users;
+  }
+}
+
 class GitHubUser {
   final String login;
   final String? name;
@@ -83,6 +121,12 @@ class GitHubService {
         .where((j) => j['pull_request'] != null)
         .map((j) => PullRequest.fromSearchJson(j, target: '@me'))
         .toList();
+  }
+
+  /// Current review requests on a single PR.
+  Future<RequestedReviewers> getRequestedReviewers(String repoFullName, int number) async {
+    final json = await _getJson('$_baseUrl/repos/$repoFullName/pulls/$number');
+    return RequestedReviewers.fromPullJson(json, owner: repoFullName.split('/').first);
   }
 
   /// Logins whose most recent review on the PR is an approval.

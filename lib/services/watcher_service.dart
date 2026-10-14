@@ -21,6 +21,10 @@ class WatcherService extends ChangeNotifier {
   Set<int> _notifiedIds = {};
   Set<int> _approvedIds = {};
 
+  /// Requested reviewers per PR id, keyed on the PR's updated_at so a PR is
+  /// only re-fetched when it changes.
+  final Map<int, ({DateTime updatedAt, RequestedReviewers reviewers})> _reviewerCache = {};
+
   List<PullRequest> _pullRequests = const [];
   List<PullRequest> get pullRequests => _pullRequests;
 
@@ -84,8 +88,12 @@ class WatcherService extends ChangeNotifier {
         }
       }
 
-      final list = merged.values.toList()
-        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      final list = <PullRequest>[];
+      for (final pr in merged.values) {
+        list.add(await _withDirectTargets(pr, settings.targets));
+      }
+      list.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      _reviewerCache.removeWhere((id, _) => !merged.containsKey(id));
 
       final currentIds = list.map((p) => p.id).toSet();
       final fresh = list.where((p) => !_notifiedIds.contains(p.id)).toList();
@@ -126,6 +134,24 @@ class WatcherService extends ChangeNotifier {
       _polling = false;
       notifyListeners();
     }
+  }
+
+  /// Replace the search-derived targets with the ones the PR directly names.
+  /// Falls back to the search result if the PR cannot be read.
+  Future<PullRequest> _withDirectTargets(PullRequest pr, List<String> targets) async {
+    var cached = _reviewerCache[pr.id];
+    if (cached == null || cached.updatedAt != pr.updatedAt) {
+      try {
+        final reviewers = await github.getRequestedReviewers(pr.repoFullName, pr.number);
+        cached = (updatedAt: pr.updatedAt, reviewers: reviewers);
+        _reviewerCache[pr.id] = cached;
+      } catch (e) {
+        debugPrint('requested reviewers for ${pr.repoFullName}#${pr.number} failed: $e');
+        return pr;
+      }
+    }
+    final normalized = targets.map(_normalizeTarget);
+    return pr.withRequestedFrom(cached.reviewers.resolve(normalized));
   }
 
   /// Announce PRs the user authored that have picked up an approval since the

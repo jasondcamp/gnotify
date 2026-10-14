@@ -61,5 +61,19 @@ class PullRequest {
         requestedFrom: {...requestedFrom, ...other.requestedFrom},
       );
 
+  PullRequest withRequestedFrom(Set<String> targets) => PullRequest(
+        id: id,
+        number: number,
+        title: title,
+        htmlUrl: htmlUrl,
+        repoFullName: repoFullName,
+        author: author,
+        authorAvatarUrl: authorAvatarUrl,
+        draft: draft,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+        requestedFrom: targets,
+      );
+
   String get repoName => repoFullName.contains('/') ? repoFullName.split('/').last : repoFullName;
 }

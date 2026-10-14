@@ -47,8 +47,10 @@ is:pr is:open draft:false org:<org> review-requested:<user>
 is:pr is:open draft:false org:<org> team-review-requested:<org>/<team>
 ```
 
-Results are merged by PR id, the count is pushed to the menubar, and any PR not
-seen before gets a notification. With approval alerts on, one more search runs:
+Results are merged by PR id. Because `review-requested:<user>` also matches
+requests sent to a team the user belongs to, each PR is then read once (cached
+until it changes) and the chips show only the targets it names directly. The
+count is pushed to the menubar, and any PR not seen before gets a notification. With approval alerts on, one more search runs:
 
 ```
 is:pr is:open org:<org> author:@me review:approved

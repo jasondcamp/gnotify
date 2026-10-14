@@ -27,6 +27,27 @@ void main() {
     expect(a.mergeTargets(b).requestedFrom, {'me', 'acme/platform'});
   });
 
+  test('resolve reports the user only when named directly', () {
+    final viaTeamOnly = RequestedReviewers.fromPullJson({
+      'requested_reviewers': [],
+      'requested_teams': [{'slug': 'platform'}],
+    }, owner: 'acme');
+    expect(viaTeamOnly.resolve(['acme/platform', 'jasondcamp']), {'acme/platform'});
+
+    final both = RequestedReviewers.fromPullJson({
+      'requested_reviewers': [{'login': 'JasonDCamp'}],
+      'requested_teams': [{'slug': 'platform'}],
+    }, owner: 'acme');
+    expect(both.resolve(['acme/platform', 'jasondcamp']), {'acme/platform', 'jasondcamp'});
+
+    // Requested via a team that is not configured: show the real team.
+    final otherTeam = RequestedReviewers.fromPullJson({
+      'requested_reviewers': [],
+      'requested_teams': [{'slug': 'infra'}],
+    }, owner: 'acme');
+    expect(otherTeam.resolve(['jasondcamp']), {'acme/infra'});
+  });
+
   test('latestApprovers keeps only reviewers whose last decision is approval', () {
     final approvers = GitHubService.latestApprovers([
       _review('alice', 'APPROVED'),
