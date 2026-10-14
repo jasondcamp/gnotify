@@ -4,7 +4,7 @@ import ServiceManagement
 import UserNotifications
 
 @main
-class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate, NSPopoverDelegate {
+class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate {
   var statusItem: NSStatusItem!
   var popover: NSPopover!
   var channel: FlutterMethodChannel!
@@ -24,7 +24,6 @@ class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate, NSPopov
     popover.contentSize = NSSize(width: 420, height: 520)
     popover.behavior = .transient  // auto-dismiss on click outside
     popover.contentViewController = flutterVC
-    popover.delegate = self
 
     // Status bar icon; the length is variable so a count can sit beside it
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -101,21 +100,39 @@ class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate, NSPopov
 
   func showPopover(_ sender: NSStatusBarButton) {
     // An LSUIElement app is not the active app when its status item is
-    // clicked, so without this the popover draws but keystrokes keep going
-    // to whichever app was frontmost and every text field looks read-only.
-    NSApp.activate(ignoringOtherApps: true)
+    // clicked. Key events only reach the active app's key window, so without
+    // activation the popover draws but every text field looks read-only.
+    // On macOS 14+ activation is cooperative and may land a moment later, so
+    // focus is also (re)applied from didBecomeActive below.
+    activateApp()
     popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
-    if let window = popover.contentViewController?.view.window {
-      window.makeKeyAndOrderFront(nil)
-      window.makeFirstResponder(popover.contentViewController?.view)
+    focusPopover()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+      self?.focusPopover()
     }
     channel.invokeMethod("popoverOpened", arguments: nil)
   }
 
-  // Clicking outside closes the transient popover; give focus back so the
-  // app the user was in does not stay deactivated.
-  func popoverDidClose(_ notification: Notification) {
-    NSApp.hide(nil)
+  private func activateApp() {
+    if #available(macOS 14.0, *) {
+      NSApp.activate()
+    } else {
+      NSApp.activate(ignoringOtherApps: true)
+    }
+  }
+
+  /// Make the popover window key and hand first responder to the Flutter view.
+  private func focusPopover() {
+    guard popover.isShown, let view = popover.contentViewController?.view,
+          let window = view.window else { return }
+    if !window.isKeyWindow { window.makeKeyAndOrderFront(nil) }
+    if window.firstResponder !== view { window.makeFirstResponder(view) }
+  }
+
+  // Activation can be granted after the popover is already up; refocus then.
+  override func applicationDidBecomeActive(_ notification: Notification) {
+    super.applicationDidBecomeActive(notification)
+    focusPopover()
   }
 
   func showContextMenu(_ sender: NSStatusBarButton) {
