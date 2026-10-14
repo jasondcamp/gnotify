@@ -19,6 +19,7 @@ class WatcherService extends ChangeNotifier {
   Timer? _timer;
   bool _polling = false;
   Set<int> _notifiedIds = {};
+  Set<int> _approvedIds = {};
 
   List<PullRequest> _pullRequests = const [];
   List<PullRequest> get pullRequests => _pullRequests;
@@ -37,6 +38,7 @@ class WatcherService extends ChangeNotifier {
 
   Future<void> start() async {
     _notifiedIds = await settingsService.loadNotifiedIds();
+    _approvedIds = await settingsService.loadApprovedIds();
     settingsService.addListener(_onSettingsChanged);
     _restartTimer();
     await refresh();
@@ -105,6 +107,8 @@ class WatcherService extends ChangeNotifier {
         _notifiedIds.add(pr.id);
       }
       if (fresh.isNotEmpty) await settingsService.saveNotifiedIds(_notifiedIds);
+
+      if (settings.notifyApprovals) await _checkApprovals(settings.org);
     } on GitHubException catch (e) {
       _error = switch (e.statusCode) {
         401 => 'Token rejected (401)',
@@ -124,6 +128,29 @@ class WatcherService extends ChangeNotifier {
     }
   }
 
+  /// Announce PRs the user authored that have picked up an approval since the
+  /// last poll. Once per PR while it stays approved; a PR that drops out
+  /// (merged, closed, approval dismissed) and comes back is announced again.
+  Future<void> _checkApprovals(String org) async {
+    final approved = await github.searchMyApprovedPrs(org: org);
+    final currentIds = approved.map((p) => p.id).toSet();
+    final fresh = approved.where((p) => !_approvedIds.contains(p.id)).toList();
+    _approvedIds = _approvedIds.intersection(currentIds);
+
+    for (final pr in fresh) {
+      final approvers = await github.getApprovers(pr.repoFullName, pr.number);
+      final by = approvers.isEmpty ? 'approved' : 'approved by ${approvers.join(', ')}';
+      await _notifyRaw(
+        id: 'approved-${pr.id}',
+        title: 'Approved: ${pr.repoName} #${pr.number}',
+        body: '${pr.title} — $by',
+        url: pr.htmlUrl,
+      );
+      _approvedIds.add(pr.id);
+    }
+    if (fresh.isNotEmpty) await settingsService.saveApprovedIds(_approvedIds);
+  }
+
   /// `@org/team` loses its `@`; everything else passes through. A target with
   /// a `/` is a team slug, anything else is a username.
   static String _normalizeTarget(String raw) {
@@ -132,13 +159,25 @@ class WatcherService extends ChangeNotifier {
     return t;
   }
 
-  Future<void> _notify(PullRequest pr) async {
+  Future<void> _notify(PullRequest pr) => _notifyRaw(
+        id: 'pr-${pr.id}',
+        title: 'Review requested: ${pr.repoName} #${pr.number}',
+        body: '${pr.title} — by ${pr.author}',
+        url: pr.htmlUrl,
+      );
+
+  Future<void> _notifyRaw({
+    required String id,
+    required String title,
+    required String body,
+    required String url,
+  }) async {
     try {
       await _channel.invokeMethod('notify', {
-        'id': 'pr-${pr.id}',
-        'title': 'Review requested: ${pr.repoName} #${pr.number}',
-        'body': '${pr.title} — by ${pr.author}',
-        'url': pr.htmlUrl,
+        'id': id,
+        'title': title,
+        'body': body,
+        'url': url,
       });
     } catch (e) {
       debugPrint('notify failed: $e');

@@ -66,6 +66,54 @@ class GitHubService {
         .toList();
   }
 
+  /// Open PRs in [org] authored by the token's user that carry at least one
+  /// approving review.
+  Future<List<PullRequest>> searchMyApprovedPrs({required String org}) async {
+    final uri = Uri.parse('$_baseUrl/search/issues').replace(queryParameters: {
+      'q': 'is:pr is:open org:$org author:@me review:approved',
+      'sort': 'updated',
+      'order': 'desc',
+      'per_page': '100',
+      'advanced_search': 'true',
+    });
+    final json = await _getJson(uri.toString());
+    final items = (json['items'] as List?) ?? const [];
+    return items
+        .cast<Map<String, dynamic>>()
+        .where((j) => j['pull_request'] != null)
+        .map((j) => PullRequest.fromSearchJson(j, target: '@me'))
+        .toList();
+  }
+
+  /// Logins whose most recent review on the PR is an approval.
+  Future<List<String>> getApprovers(String repoFullName, int number) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/repos/$repoFullName/pulls/$number/reviews?per_page=100'),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) return const [];
+    final reviews = (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+    return latestApprovers(reviews);
+  }
+
+  /// Reduces a chronological review list to the reviewers whose latest
+  /// decision is APPROVED. Comments do not change a reviewer's decision;
+  /// CHANGES_REQUESTED and DISMISSED do.
+  static List<String> latestApprovers(List<Map<String, dynamic>> reviews) {
+    final latest = <String, String>{};
+    for (final r in reviews) {
+      final login = (r['user'] as Map<String, dynamic>?)?['login'] as String?;
+      final state = r['state'] as String?;
+      if (login == null || state == null) continue;
+      if (state == 'COMMENTED' || state == 'PENDING') continue;
+      latest[login] = state;
+    }
+    return [
+      for (final e in latest.entries)
+        if (e.value == 'APPROVED') e.key,
+    ];
+  }
+
   /// Confirms the token can search PRs inside [org]. Throws a
   /// [GitHubException] with GitHub's own explanation when it cannot, which
   /// is the usual failure for a fine-grained token issued under the wrong

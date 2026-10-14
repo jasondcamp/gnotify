@@ -5,6 +5,8 @@ macOS menubar app that watches GitHub and tells you when a pull request needs yo
 - **Notifications** when a PR opens with a review request for you or one of your teams.
 - **Badge** on the menubar icon with the number of PRs currently waiting on you.
 - **List** of those PRs in a popover; click one to open it in the browser.
+- **Approval alerts** when a PR you opened in the org gets an approving review
+  (toggle in Settings).
 
 Built with Flutter, following the same layout as the twickets menubar app.
 
@@ -46,7 +48,15 @@ is:pr is:open draft:false org:<org> team-review-requested:<org>/<team>
 ```
 
 Results are merged by PR id, the count is pushed to the menubar, and any PR not
-seen before gets a notification. Once you submit a review GitHub drops the review
+seen before gets a notification. With approval alerts on, one more search runs:
+
+```
+is:pr is:open org:<org> author:@me review:approved
+```
+
+Each newly approved PR is announced once, naming the approvers from the PR's
+review list. The badge and list are unaffected; they only ever count reviews
+waiting on you. Once you submit a review GitHub drops the review
 request, so the PR falls off the list; if someone re-requests you, it notifies again.
 
 Settings and the token are stored in the app's sandboxed `UserDefaults`.

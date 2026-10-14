@@ -31,6 +31,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late List<String> _targets;
 
   bool _obscureToken = true;
+  late bool _notifyApprovals;
   bool _testing = false;
   bool _saving = false;
   String? _testResult;
@@ -45,6 +46,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _org = TextEditingController(text: s.org);
     _interval = TextEditingController(text: '${s.pollIntervalSeconds}');
     _targets = List.of(s.targets);
+    _notifyApprovals = s.notifyApprovals;
   }
 
   @override
@@ -139,6 +141,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       org: org,
       targets: _targets,
       pollIntervalSeconds: interval,
+      notifyApprovals: _notifyApprovals,
     ));
     if (!mounted) return;
     setState(() => _saving = false);
@@ -205,6 +208,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _label('Poll interval (seconds)'),
                   const SizedBox(height: 4),
                   SizedBox(width: 120, child: _field(_interval, hint: '60')),
+                  const SizedBox(height: 12),
+                  _label('Approvals'),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      SizedBox(
+                        height: 28,
+                        child: FittedBox(
+                          child: Switch(
+                            value: _notifyApprovals,
+                            activeTrackColor: const Color(0xFF6366F1),
+                            onChanged: (v) => setState(() => _notifyApprovals = v),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Notify me when a PR I opened gets approved',
+                          style: GoogleFonts.inter(fontSize: 12, color: Colors.black87),
+                        ),
+                      ),
+                    ],
+                  ),
                   if (_testResult != null) ...[
                     const SizedBox(height: 12),
                     Text(

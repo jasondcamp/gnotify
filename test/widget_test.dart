@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gnotify/models/pull_request.dart';
+import 'package:gnotify/services/github_service.dart';
 
 void main() {
   test('PullRequest parses a search item', () {
@@ -25,7 +26,25 @@ void main() {
     final b = PullRequest.fromSearchJson(_item(1), target: 'acme/platform');
     expect(a.mergeTargets(b).requestedFrom, {'me', 'acme/platform'});
   });
+
+  test('latestApprovers keeps only reviewers whose last decision is approval', () {
+    final approvers = GitHubService.latestApprovers([
+      _review('alice', 'APPROVED'),
+      _review('bob', 'CHANGES_REQUESTED'),
+      _review('bob', 'COMMENTED'),
+      _review('carol', 'APPROVED'),
+      _review('carol', 'DISMISSED'),
+      _review('dave', 'COMMENTED'),
+      _review('bob', 'APPROVED'),
+    ]);
+    expect(approvers, ['alice', 'bob']);
+  });
 }
+
+Map<String, dynamic> _review(String login, String state) => {
+      'user': {'login': login},
+      'state': state,
+    };
 
 Map<String, dynamic> _item(int id) => {
       'id': id,
