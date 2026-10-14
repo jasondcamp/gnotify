@@ -87,7 +87,8 @@ class GitHubService {
     final qualifier = target.contains('/')
         ? 'team-review-requested:$target'
         : 'review-requested:$target';
-    final q = 'is:pr is:open draft:false org:$org $qualifier';
+    // -author:@me: you cannot review your own PR, so it never belongs here.
+    final q = 'is:pr is:open draft:false org:$org $qualifier -author:@me';
     final uri = Uri.parse('$_baseUrl/search/issues').replace(queryParameters: {
       'q': q,
       'sort': 'updated',
@@ -104,11 +105,10 @@ class GitHubService {
         .toList();
   }
 
-  /// Open PRs in [org] authored by the token's user that carry at least one
-  /// approving review.
-  Future<List<PullRequest>> searchMyApprovedPrs({required String org}) async {
+  /// Every open PR in [org] authored by the token's user, drafts included.
+  Future<List<PullRequest>> searchMyOpenPrs({required String org}) async {
     final uri = Uri.parse('$_baseUrl/search/issues').replace(queryParameters: {
-      'q': 'is:pr is:open org:$org author:@me review:approved',
+      'q': 'is:pr is:open org:$org author:@me',
       'sort': 'updated',
       'order': 'desc',
       'per_page': '100',
@@ -129,21 +129,20 @@ class GitHubService {
     return RequestedReviewers.fromPullJson(json, owner: repoFullName.split('/').first);
   }
 
-  /// Logins whose most recent review on the PR is an approval.
-  Future<List<String>> getApprovers(String repoFullName, int number) async {
+  /// Latest decision per reviewer login on a PR (APPROVED, CHANGES_REQUESTED
+  /// or DISMISSED). Comments and pending reviews are not decisions.
+  Future<Map<String, String>> getReviewDecisions(String repoFullName, int number) async {
     final response = await http.get(
       Uri.parse('$_baseUrl/repos/$repoFullName/pulls/$number/reviews?per_page=100'),
       headers: _headers,
     );
-    if (response.statusCode != 200) return const [];
+    if (response.statusCode != 200) return const {};
     final reviews = (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
-    return latestApprovers(reviews);
+    return latestDecisions(reviews);
   }
 
-  /// Reduces a chronological review list to the reviewers whose latest
-  /// decision is APPROVED. Comments do not change a reviewer's decision;
-  /// CHANGES_REQUESTED and DISMISSED do.
-  static List<String> latestApprovers(List<Map<String, dynamic>> reviews) {
+  /// Reduces a chronological review list to each reviewer's latest decision.
+  static Map<String, String> latestDecisions(List<Map<String, dynamic>> reviews) {
     final latest = <String, String>{};
     for (final r in reviews) {
       final login = (r['user'] as Map<String, dynamic>?)?['login'] as String?;
@@ -152,11 +151,14 @@ class GitHubService {
       if (state == 'COMMENTED' || state == 'PENDING') continue;
       latest[login] = state;
     }
-    return [
-      for (final e in latest.entries)
-        if (e.value == 'APPROVED') e.key,
-    ];
+    return latest;
   }
+
+  /// Reviewers whose latest decision is APPROVED.
+  static List<String> latestApprovers(List<Map<String, dynamic>> reviews) => [
+        for (final e in latestDecisions(reviews).entries)
+          if (e.value == 'APPROVED') e.key,
+      ];
 
   /// Confirms the token can search PRs inside [org]. Throws a
   /// [GitHubException] with GitHub's own explanation when it cannot, which

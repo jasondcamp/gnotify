@@ -4,7 +4,10 @@ macOS menubar app that watches GitHub and tells you when a pull request needs yo
 
 - **Notifications** when a PR opens with a review request for you or one of your teams.
 - **Badge** on the menubar icon with the number of PRs currently waiting on you.
-- **List** of those PRs in a popover; click one to open it in the browser.
+- **List** of those PRs in a popover, on a **To review** tab; click one to open
+  it in the browser. Your own PRs never appear here.
+- **My PRs** tab: every open PR you authored in the org, with Approved /
+  Changes requested / Awaiting review / Draft and who said or was asked what.
 - **Approval alerts** when a PR you opened in the org gets an approving review.
 - Both kinds of notification have a toggle in Settings. With both off it works
   as a plain dashboard: list and badge only.
@@ -51,14 +54,15 @@ is:pr is:open draft:false org:<org> team-review-requested:<org>/<team>
 Results are merged by PR id. Because `review-requested:<user>` also matches
 requests sent to a team the user belongs to, each PR is then read once (cached
 until it changes) and the chips show only the targets it names directly. The
-count is pushed to the menubar, and any PR not seen before gets a notification. With approval alerts on, one more search runs:
+count is pushed to the menubar, and any PR not seen before gets a notification. The My PRs tab comes from one more search:
 
 ```
-is:pr is:open org:<org> author:@me review:approved
+is:pr is:open org:<org> author:@me
 ```
 
-Each newly approved PR is announced once, naming the approvers from the PR's
-review list. The badge and list are unaffected; they only ever count reviews
+Each of those is read once (cached until it changes) for its reviews and
+outstanding requests. A PR whose state becomes Approved is announced once, naming
+the approvers. The badge and list are unaffected; they only ever count reviews
 waiting on you. Once you submit a review GitHub drops the review
 request, so the PR falls off the list; if someone re-requests you, it notifies again.
 

@@ -48,6 +48,24 @@ void main() {
     expect(otherTeam.resolve(['jasondcamp']), {'acme/infra'});
   });
 
+  test('OwnPullRequest.derive picks the right state', () {
+    final pr = PullRequest.fromSearchJson(_item(7), target: '@me');
+    OwnPullRequest d(Map<String, String> decisions, {Set<String> pending = const {}}) =>
+        OwnPullRequest.derive(pr: pr, latestDecisions: decisions, pendingReviewers: pending);
+
+    expect(d({}).state, ReviewState.awaiting);
+    expect(d({'alice': 'APPROVED'}).state, ReviewState.approved);
+    expect(d({'alice': 'APPROVED', 'bob': 'CHANGES_REQUESTED'}).state, ReviewState.changesRequested);
+    expect(d({'alice': 'DISMISSED'}).state, ReviewState.awaiting);
+    expect(d({'alice': 'APPROVED'}).approvers, ['alice']);
+
+    final draft = PullRequest.fromSearchJson({..._item(8), 'draft': true}, target: '@me');
+    expect(
+      OwnPullRequest.derive(pr: draft, latestDecisions: {'alice': 'APPROVED'}, pendingReviewers: {}).state,
+      ReviewState.draft,
+    );
+  });
+
   test('latestApprovers keeps only reviewers whose last decision is approval', () {
     final approvers = GitHubService.latestApprovers([
       _review('alice', 'APPROVED'),

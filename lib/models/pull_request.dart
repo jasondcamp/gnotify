@@ -77,3 +77,55 @@ class PullRequest {
 
   String get repoName => repoFullName.contains('/') ? repoFullName.split('/').last : repoFullName;
 }
+
+enum ReviewState { draft, awaiting, approved, changesRequested }
+
+/// One of the user's own PRs with its current review situation.
+class OwnPullRequest {
+  final PullRequest pr;
+  final ReviewState state;
+  final List<String> approvers;
+  final List<String> changesRequestedBy;
+
+  /// Who is still being asked, as logins and `owner/team` slugs.
+  final Set<String> pendingReviewers;
+
+  const OwnPullRequest({
+    required this.pr,
+    required this.state,
+    this.approvers = const [],
+    this.changesRequestedBy = const [],
+    this.pendingReviewers = const {},
+  });
+
+  /// Derives the state from the PR's draft flag, the latest decision of each
+  /// reviewer and the outstanding requests.
+  factory OwnPullRequest.derive({
+    required PullRequest pr,
+    required Map<String, String> latestDecisions,
+    required Set<String> pendingReviewers,
+  }) {
+    final approvers = [
+      for (final e in latestDecisions.entries)
+        if (e.value == 'APPROVED') e.key,
+    ];
+    final changes = [
+      for (final e in latestDecisions.entries)
+        if (e.value == 'CHANGES_REQUESTED') e.key,
+    ];
+    final state = pr.draft
+        ? ReviewState.draft
+        : changes.isNotEmpty
+            ? ReviewState.changesRequested
+            : approvers.isNotEmpty
+                ? ReviewState.approved
+                : ReviewState.awaiting;
+    return OwnPullRequest(
+      pr: pr,
+      state: state,
+      approvers: approvers,
+      changesRequestedBy: changes,
+      pendingReviewers: pendingReviewers,
+    );
+  }
+}

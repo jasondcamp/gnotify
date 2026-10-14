@@ -31,8 +31,16 @@ class WatcherService extends ChangeNotifier {
   /// only re-fetched when it changes.
   final Map<int, ({DateTime updatedAt, RequestedReviewers reviewers})> _reviewerCache = {};
 
+  /// Review decisions and outstanding requests for the user's own PRs,
+  /// likewise keyed on updated_at.
+  final Map<int, ({DateTime updatedAt, Map<String, String> decisions, RequestedReviewers reviewers})>
+      _ownPrCache = {};
+
   List<PullRequest> _pullRequests = const [];
   List<PullRequest> get pullRequests => _pullRequests;
+
+  List<OwnPullRequest> _myPullRequests = const [];
+  List<OwnPullRequest> get myPullRequests => _myPullRequests;
 
   DateTime? _lastUpdated;
   DateTime? get lastUpdated => _lastUpdated;
@@ -79,6 +87,7 @@ class WatcherService extends ChangeNotifier {
 
     if (!settings.isConfigured) {
       _pullRequests = const [];
+      _myPullRequests = const [];
       _error = null;
       _errorDetail = null;
       _pushBadge(0);
@@ -130,7 +139,7 @@ class WatcherService extends ChangeNotifier {
       }
       if (fresh.isNotEmpty) await settingsService.saveNotifiedIds(_notifiedIds);
 
-      if (settings.notifyApprovals) await _checkApprovals(settings.org);
+      await _refreshMyPullRequests(settings.org, notify: settings.notifyApprovals);
     } on GitHubException catch (e) {
       _error = switch (e.statusCode) {
         401 => 'Token rejected (401)',
@@ -168,34 +177,64 @@ class WatcherService extends ChangeNotifier {
     return pr.withRequestedFrom(cached.reviewers.resolve(normalized));
   }
 
-  /// Announce PRs the user authored that have picked up an approval since the
-  /// last poll. Once per PR while it stays approved; a PR that drops out
+  /// Rebuild the My PRs tab and announce newly approved ones. Approval is
+  /// announced once per PR while it stays approved; a PR that drops out
   /// (merged, closed, approval dismissed) and comes back is announced again.
-  Future<void> _checkApprovals(String org) async {
-    final approved = await github.searchMyApprovedPrs(org: org);
-    final currentIds = approved.map((p) => p.id).toSet();
-    final fresh = approved.where((p) => !_approvedIds.contains(p.id)).toList();
+  Future<void> _refreshMyPullRequests(String org, {required bool notify}) async {
+    final mine = await github.searchMyOpenPrs(org: org);
+    final own = <OwnPullRequest>[];
+    for (final pr in mine) {
+      own.add(await _deriveOwn(pr));
+    }
+    own.sort((a, b) => b.pr.updatedAt.compareTo(a.pr.updatedAt));
+    _ownPrCache.removeWhere((id, _) => !mine.any((p) => p.id == id));
+    _myPullRequests = own;
+
+    final approved = own.where((o) => o.state == ReviewState.approved).toList();
+    final currentIds = approved.map((o) => o.pr.id).toSet();
+    final fresh = approved.where((o) => !_approvedIds.contains(o.pr.id)).toList();
     _approvedIds = _approvedIds.intersection(currentIds);
 
-    if (_approvalsNeedBaseline) {
+    if (_approvalsNeedBaseline || !notify) {
+      // Record without announcing: first run, toggle just switched on, or
+      // approvals muted. Keeps a later switch-on from replaying old approvals.
       _approvedIds = currentIds;
-      _approvalsNeedBaseline = false;
+      if (notify) _approvalsNeedBaseline = false;
       await settingsService.saveApprovedIds(_approvedIds);
       return;
     }
 
-    for (final pr in fresh) {
-      final approvers = await github.getApprovers(pr.repoFullName, pr.number);
-      final by = approvers.isEmpty ? 'approved' : 'approved by ${approvers.join(', ')}';
+    for (final o in fresh) {
+      final by = o.approvers.isEmpty ? 'approved' : 'approved by ${o.approvers.join(', ')}';
       await _notifyRaw(
-        id: 'approved-${pr.id}',
-        title: 'Approved: ${pr.repoName} #${pr.number}',
-        body: '${pr.title} — $by',
-        url: pr.htmlUrl,
+        id: 'approved-${o.pr.id}',
+        title: 'Approved: ${o.pr.repoName} #${o.pr.number}',
+        body: '${o.pr.title} — $by',
+        url: o.pr.htmlUrl,
       );
-      _approvedIds.add(pr.id);
+      _approvedIds.add(o.pr.id);
     }
     if (fresh.isNotEmpty) await settingsService.saveApprovedIds(_approvedIds);
+  }
+
+  Future<OwnPullRequest> _deriveOwn(PullRequest pr) async {
+    var cached = _ownPrCache[pr.id];
+    if (cached == null || cached.updatedAt != pr.updatedAt) {
+      try {
+        final decisions = await github.getReviewDecisions(pr.repoFullName, pr.number);
+        final reviewers = await github.getRequestedReviewers(pr.repoFullName, pr.number);
+        cached = (updatedAt: pr.updatedAt, decisions: decisions, reviewers: reviewers);
+        _ownPrCache[pr.id] = cached;
+      } catch (e) {
+        debugPrint('own PR details for ${pr.repoFullName}#${pr.number} failed: $e');
+        return OwnPullRequest.derive(pr: pr, latestDecisions: const {}, pendingReviewers: const {});
+      }
+    }
+    return OwnPullRequest.derive(
+      pr: pr,
+      latestDecisions: cached.decisions,
+      pendingReviewers: {...cached.reviewers.users, ...cached.reviewers.teams},
+    );
   }
 
   /// `@org/team` loses its `@`; everything else passes through. A target with
