@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/github_service.dart';
 import '../services/settings_service.dart';
+import '../services/watcher_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   final SettingsService settingsService;
@@ -307,6 +308,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
       child: Row(
         children: [
+          TextButton.icon(
+            onPressed: WatcherService.quitApp,
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              foregroundColor: const Color(0xFF6B7280),
+            ),
+            icon: const Icon(Icons.power_settings_new, size: 14),
+            label: Text('Quit', style: GoogleFonts.inter(fontSize: 12)),
+          ),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
               _error ?? '',

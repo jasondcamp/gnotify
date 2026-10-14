@@ -53,7 +53,11 @@ Sign-In and Security > App-Specific Passwords.
 - **Entitlements**: app sandbox, network client
 - **Popover size**: 420x520
 - **Method channel**: `com.jasoncamp.gnotify/menubar`
-  - Dart -> Swift: `updateBadge`, `updateTooltip`, `notify`, `openUrl`, `closePopover`
+  - Dart -> Swift: `updateBadge`, `updateTooltip`, `notify`, `openUrl`, `closePopover`, `quit`
   - Swift -> Dart: `popoverOpened`, `openSettings`, `refresh`
+- **Popover mouse input**: the Flutter view is hosted in a container view
+  controller and left-button events are forwarded to it by a local event
+  monitor, working around an AppKit bug that drops popover clicks when
+  "Reduce transparency" is on (flutter/flutter#115015)
 - **Notifications**: `UNUserNotificationCenter`; clicking one opens the PR URL
 - **Launch at login**: `SMAppService` (macOS 13+), prompted once on first launch

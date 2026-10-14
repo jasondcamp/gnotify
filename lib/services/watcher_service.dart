@@ -161,6 +161,10 @@ class WatcherService extends ChangeNotifier {
     await _channel.invokeMethod('closePopover');
   }
 
+  static Future<void> quitApp() async {
+    await _channel.invokeMethod('quit');
+  }
+
   @override
   void dispose() {
     _timer?.cancel();

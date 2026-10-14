@@ -8,9 +8,10 @@ class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate {
   var statusItem: NSStatusItem!
   var popover: NSPopover!
   var channel: FlutterMethodChannel!
+  var flutterVC: FlutterViewController!
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
-    let flutterVC = mainFlutterWindow!.contentViewController as! FlutterViewController
+    flutterVC = (mainFlutterWindow!.contentViewController as! FlutterViewController)
 
     // Method channel for Dart <-> Swift communication
     channel = FlutterMethodChannel(
@@ -19,11 +20,19 @@ class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate {
     )
     channel.setMethodCallHandler(handleMethodCall)
 
-    // Popover hosting the Flutter UI
+    // Popover hosting the Flutter UI.
+    //
+    // The Flutter view is wrapped in a plain container rather than being the
+    // popover's content view directly. AppKit has a bug where mouseDown/mouseUp
+    // are not forwarded up the responder chain for an NSPopover's content view
+    // when "Reduce transparency" is on; Flutter relies on that forwarding and
+    // only works around it below macOS 13.3.1, so on newer systems clicks are
+    // silently dropped while keyboard input keeps working.
+    // See https://github.com/flutter/flutter/issues/115015
     popover = NSPopover()
     popover.contentSize = NSSize(width: 420, height: 520)
     popover.behavior = .transient  // auto-dismiss on click outside
-    popover.contentViewController = flutterVC
+    popover.contentViewController = PopoverHostViewController(hosting: flutterVC)
 
     // Status bar icon; the length is variable so a count can sit beside it
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -39,6 +48,25 @@ class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate {
 
     // Hide the XIB window; the popover is our only surface
     mainFlutterWindow!.orderOut(nil)
+
+    // Deliver left-button events in the popover straight to Flutter. This is
+    // the belt to the wrapper's braces above: it does not depend on AppKit's
+    // popover responder chain at all. FlutterView's own mouseDown/Up/Dragged do
+    // nothing but forward to the controller, so swallowing the event here
+    // loses nothing and avoids a double dispatch when the chain does work.
+    NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp, .leftMouseDragged]) { [weak self] event in
+      guard let self = self, self.popover.isShown,
+            let window = event.window, window === self.flutterVC.view.window else {
+        return event
+      }
+      switch event.type {
+      case .leftMouseDown: self.flutterVC.mouseDown(with: event)
+      case .leftMouseUp: self.flutterVC.mouseUp(with: event)
+      case .leftMouseDragged: self.flutterVC.mouseDragged(with: event)
+      default: return event
+      }
+      return nil
+    }
 
     // Escape key closes the popover
     NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -123,7 +151,9 @@ class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate {
 
   /// Make the popover window key and hand first responder to the Flutter view.
   private func focusPopover() {
-    guard popover.isShown, let view = popover.contentViewController?.view,
+    guard popover.isShown,
+          let host = popover.contentViewController as? PopoverHostViewController,
+          let view = host.children.first?.view,
           let window = view.window else { return }
     if !window.isKeyWindow { window.makeKeyAndOrderFront(nil) }
     if window.firstResponder !== view { window.makeFirstResponder(view) }
@@ -214,6 +244,9 @@ class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate {
     case "closePopover":
       popover.performClose(nil)
       result(nil)
+    case "quit":
+      result(nil)
+      NSApp.terminate(nil)
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -266,5 +299,29 @@ class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate {
 
   override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
     return true
+  }
+}
+
+/// Plain container that hosts the Flutter view controller as a child, so the
+/// FlutterView is a subview of the popover's content view rather than the
+/// content view itself.
+class PopoverHostViewController: NSViewController {
+  private let hosted: NSViewController
+
+  init(hosting: NSViewController) {
+    self.hosted = hosting
+    super.init(nibName: nil, bundle: nil)
+  }
+
+  required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+  override func loadView() {
+    let container = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 520))
+    container.wantsLayer = true
+    addChild(hosted)
+    hosted.view.frame = container.bounds
+    hosted.view.autoresizingMask = [.width, .height]
+    container.addSubview(hosted.view)
+    view = container
   }
 }
