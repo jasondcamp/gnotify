@@ -9,8 +9,10 @@ macOS menubar app that watches GitHub and tells you when a pull request needs yo
 - **My PRs** tab: every open PR you authored in the org, with Approved /
   Changes requested / Awaiting review / Draft and who said or was asked what.
 - **Approval alerts** when a PR you opened in the org gets an approving review.
-- Both kinds of notification have a toggle in Settings. With both off it works
-  as a plain dashboard: list and badge only.
+- **Copilot alerts** when Copilot code review finishes on a PR you opened. The
+  My PRs tab also shows "Copilot reviewing" / "Copilot reviewed".
+- Every kind of notification has a toggle in Settings. With all of them off it
+  works as a plain dashboard: list and badge only.
 
 Built with Flutter, following the same layout as the twickets menubar app.
 

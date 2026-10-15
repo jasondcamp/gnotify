@@ -80,6 +80,8 @@ class PullRequest {
 
 enum ReviewState { draft, awaiting, approved, changesRequested }
 
+enum CopilotStatus { none, reviewing, reviewed }
+
 /// One of the user's own PRs with its current review situation.
 class OwnPullRequest {
   final PullRequest pr;
@@ -87,8 +89,14 @@ class OwnPullRequest {
   final List<String> approvers;
   final List<String> changesRequestedBy;
 
-  /// Who is still being asked, as logins and `owner/team` slugs.
+  /// Who is still being asked, as logins and `owner/team` slugs. Copilot is
+  /// excluded here and reported through [copilot] instead.
   final Set<String> pendingReviewers;
+
+  final CopilotStatus copilot;
+
+  /// Ids of Copilot's submitted reviews on this PR.
+  final Set<int> copilotReviewIds;
 
   const OwnPullRequest({
     required this.pr,
@@ -96,6 +104,8 @@ class OwnPullRequest {
     this.approvers = const [],
     this.changesRequestedBy = const [],
     this.pendingReviewers = const {},
+    this.copilot = CopilotStatus.none,
+    this.copilotReviewIds = const {},
   });
 
   /// Derives the state from the PR's draft flag, the latest decision of each
@@ -104,7 +114,15 @@ class OwnPullRequest {
     required PullRequest pr,
     required Map<String, String> latestDecisions,
     required Set<String> pendingReviewers,
+    Set<int> copilotReviewIds = const {},
   }) {
+    final copilotPending = pendingReviewers.any((r) => r.toLowerCase().contains('copilot'));
+    final humans = pendingReviewers.where((r) => !r.toLowerCase().contains('copilot')).toSet();
+    final copilot = copilotPending
+        ? CopilotStatus.reviewing
+        : copilotReviewIds.isNotEmpty
+            ? CopilotStatus.reviewed
+            : CopilotStatus.none;
     final approvers = [
       for (final e in latestDecisions.entries)
         if (e.value == 'APPROVED') e.key,
@@ -125,7 +143,9 @@ class OwnPullRequest {
       state: state,
       approvers: approvers,
       changesRequestedBy: changes,
-      pendingReviewers: pendingReviewers,
+      pendingReviewers: humans,
+      copilot: copilot,
+      copilotReviewIds: copilotReviewIds,
     );
   }
 }

@@ -16,6 +16,9 @@ class Settings {
   /// Notify when a PR the token's user authored gets an approving review.
   final bool notifyApprovals;
 
+  /// Notify when Copilot finishes reviewing a PR the token's user authored.
+  final bool notifyCopilotReviews;
+
   const Settings({
     this.token = '',
     this.org = '',
@@ -23,6 +26,7 @@ class Settings {
     this.pollIntervalSeconds = 60,
     this.notifyReviewRequests = true,
     this.notifyApprovals = true,
+    this.notifyCopilotReviews = true,
   });
 
   bool get isConfigured => token.isNotEmpty && org.isNotEmpty && targets.isNotEmpty;
@@ -34,6 +38,7 @@ class Settings {
     int? pollIntervalSeconds,
     bool? notifyReviewRequests,
     bool? notifyApprovals,
+    bool? notifyCopilotReviews,
   }) =>
       Settings(
         token: token ?? this.token,
@@ -42,6 +47,7 @@ class Settings {
         pollIntervalSeconds: pollIntervalSeconds ?? this.pollIntervalSeconds,
         notifyReviewRequests: notifyReviewRequests ?? this.notifyReviewRequests,
         notifyApprovals: notifyApprovals ?? this.notifyApprovals,
+        notifyCopilotReviews: notifyCopilotReviews ?? this.notifyCopilotReviews,
       );
 }
 
@@ -53,7 +59,9 @@ class SettingsService extends ChangeNotifier {
   static const _kNotifyReviewRequests = 'notify_review_requests';
   static const _kNotifyApprovals = 'notify_approvals';
   static const _kNotifiedIds = 'notified_pr_ids';
+  static const _kNotifyCopilot = 'notify_copilot_reviews';
   static const _kApprovedIds = 'approved_pr_ids';
+  static const _kCopilotReviewIds = 'copilot_review_ids';
 
   Settings _settings = const Settings();
   Settings get settings => _settings;
@@ -67,6 +75,7 @@ class SettingsService extends ChangeNotifier {
       pollIntervalSeconds: prefs.getInt(_kPollInterval) ?? 60,
       notifyReviewRequests: prefs.getBool(_kNotifyReviewRequests) ?? true,
       notifyApprovals: prefs.getBool(_kNotifyApprovals) ?? true,
+      notifyCopilotReviews: prefs.getBool(_kNotifyCopilot) ?? true,
     );
     notifyListeners();
   }
@@ -82,6 +91,7 @@ class SettingsService extends ChangeNotifier {
     await prefs.setInt(_kPollInterval, s.pollIntervalSeconds.clamp(15, 3600));
     await prefs.setBool(_kNotifyReviewRequests, s.notifyReviewRequests);
     await prefs.setBool(_kNotifyApprovals, s.notifyApprovals);
+    await prefs.setBool(_kNotifyCopilot, s.notifyCopilotReviews);
     await load();
   }
 
@@ -98,6 +108,14 @@ class SettingsService extends ChangeNotifier {
     return _loadIds(_kApprovedIds);
   }
   Future<void> saveApprovedIds(Set<int> ids) => _saveIds(_kApprovedIds, ids);
+
+  /// IDs of Copilot reviews already announced. Null until a baseline exists.
+  Future<Set<int>?> loadCopilotReviewIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!prefs.containsKey(_kCopilotReviewIds)) return null;
+    return _loadIds(_kCopilotReviewIds);
+  }
+  Future<void> saveCopilotReviewIds(Set<int> ids) => _saveIds(_kCopilotReviewIds, ids);
 
   Future<Set<int>> _loadIds(String key) async {
     final prefs = await SharedPreferences.getInstance();

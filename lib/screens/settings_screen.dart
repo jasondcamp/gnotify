@@ -33,6 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _obscureToken = true;
   late bool _notifyReviewRequests;
   late bool _notifyApprovals;
+  late bool _notifyCopilot;
   bool _testing = false;
   bool _saving = false;
   String? _testResult;
@@ -49,6 +50,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _targets = List.of(s.targets);
     _notifyReviewRequests = s.notifyReviewRequests;
     _notifyApprovals = s.notifyApprovals;
+    _notifyCopilot = s.notifyCopilotReviews;
   }
 
   @override
@@ -145,6 +147,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       pollIntervalSeconds: interval,
       notifyReviewRequests: _notifyReviewRequests,
       notifyApprovals: _notifyApprovals,
+      notifyCopilotReviews: _notifyCopilot,
     ));
     if (!mounted) return;
     setState(() => _saving = false);
@@ -224,9 +227,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _notifyApprovals,
                     (v) => setState(() => _notifyApprovals = v),
                   ),
+                  _toggle(
+                    'Copilot finished reviewing a PR I opened',
+                    _notifyCopilot,
+                    (v) => setState(() => _notifyCopilot = v),
+                  ),
                   const SizedBox(height: 2),
                   Text(
-                    'Both off: the list and badge still update, nothing pops up.',
+                    'All off: the list and badge still update, nothing pops up.',
                     style: GoogleFonts.inter(fontSize: 10, color: const Color(0xFF9CA3AF)),
                   ),
                   if (_testResult != null) ...[
