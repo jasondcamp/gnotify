@@ -4,7 +4,7 @@ macOS menubar app that watches GitHub and tells you when a pull request needs yo
 
 - **Notifications** when a PR opens with a review request for you or one of your teams.
 - **Badge** on the menubar icon with the number of PRs currently waiting on you.
-- **List** of those PRs in a popover, on a **To review** tab; click one to open
+- **List** of those PRs in a popover, on a **To Review** tab; click one to open
   it in the browser. Your own PRs never appear here.
 - **My PRs** tab: every open PR you authored in the org, with Approved /
   Changes requested / Awaiting review / Draft and who said or was asked what.
