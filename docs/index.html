@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gnotify, a macOS menubar app for pull request reviews</title>
+<meta name="description" content="gnotify is a free, open source macOS menubar app that tells you when a pull request needs your review.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="canonical" href="https://gnotify.dev/">
+
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://gnotify.dev/">
+<meta property="og:title" content="gnotify, a macOS menubar app for pull request reviews">
+<meta property="og:description" content="Free and open source. Tells you when a pull request needs your review, and stays quiet when nothing does.">
+<!-- Add og-image.png (1200x630) to docs/ and uncomment once a real screenshot exists.
+     A link preview pointing at a missing image is worse than no image at all.
+<meta property="og:image" content="https://gnotify.dev/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+-->
+
+<style>
+:root {
+  --accent: #6366F1;
+  --accent-hover: #5457d8;
+  --bg: #ffffff;
+  --bg-sunken: #f5f5f7;
+  --surface: #ffffff;
+  --text: #1d1d1f;
+  --text-muted: #6e6e73;
+  --border: #e3e3e6;
+  --border-strong: #d2d2d7;
+  --shadow-popover: 0 12px 40px -12px rgba(0, 0, 0, .28);
+  --warn-bg: #fff8ed;
+  --warn-border: #f2d9b0;
+  --warn-text: #7a4e13;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #818cf8;
+    --accent-hover: #939dfa;
+    --bg: #0d0d0f;
+    --bg-sunken: #161619;
+    --surface: #161619;
+    --text: #f2f2f4;
+    --text-muted: #9a9aa2;
+    --border: #2a2a30;
+    --border-strong: #3a3a42;
+    --shadow-popover: 0 12px 40px -12px rgba(0, 0, 0, .7);
+    --warn-bg: #241b0d;
+    --warn-border: #4a3718;
+    --warn-text: #e8c389;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); }
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: .88em;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: .1em .4em;
+}
+
+.wrap {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.wrap--wide { max-width: 1000px; }
+
+/* ---------- header ---------- */
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 0;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.brand svg { color: var(--accent); display: block; }
+
+.site-header a.ghlink {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.site-header a.ghlink:hover { color: var(--text); }
+
+/* ---------- hero ---------- */
+
+.hero {
+  text-align: center;
+  padding: 64px 0 48px;
+}
+
+.hero h1 {
+  font-size: clamp(32px, 5.5vw, 48px);
+  line-height: 1.12;
+  letter-spacing: -.025em;
+  font-weight: 700;
+  margin: 0 0 18px;
+  text-wrap: balance;
+}
+
+.hero p.sub {
+  font-size: clamp(18px, 2.4vw, 21px);
+  color: var(--text-muted);
+  margin: 0 0 36px;
+  text-wrap: balance;
+}
+
+.btn {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 500;
+  text-decoration: none;
+  padding: 13px 30px;
+  border-radius: 10px;
+  transition: background .15s ease;
+}
+
+.btn:hover { background: var(--accent-hover); }
+
+@media (prefers-color-scheme: dark) {
+  .btn { color: #15151a; }
+}
+
+.meta {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 16px 0 0;
+}
+
+.hero .source {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+/* ---------- macOS mockup ---------- */
+
+.shot { padding-bottom: 88px; }
+
+.mac {
+  position: relative;
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  overflow: hidden;
+  background: linear-gradient(145deg, #e9e9ef 0%, #cfcfda 100%);
+  /* Cropped close to the menubar and popover. A tall frame leaves a large
+     empty desktop, which reads as a rendering bug rather than a screenshot. */
+  height: clamp(300px, 40vw, 430px);
+  user-select: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .mac { background: linear-gradient(145deg, #23232c 0%, #0b0b0f 100%); }
+}
+
+.menubar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1d1d1f;
+  background: rgba(255, 255, 255, .72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(0, 0, 0, .07);
+}
+
+@media (prefers-color-scheme: dark) {
+  .menubar {
+    color: #f2f2f4;
+    background: rgba(22, 22, 25, .72);
+    border-bottom-color: rgba(255, 255, 255, .08);
+  }
+}
+
+.menubar .left,
+.menubar .right { display: flex; align-items: center; gap: 16px; }
+
+.menubar .right { gap: 14px; }
+
+.menubar .mb-item { opacity: .85; }
+
+@media (max-width: 680px) {
+  .menubar .mb-item.optional { display: none; }
+  .menubar { gap: 8px; }
+}
+
+.tray {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, .06);
+}
+
+@media (prefers-color-scheme: dark) {
+  .tray { background: rgba(255, 255, 255, .1); }
+}
+
+.tray svg { display: block; color: currentColor; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+@media (prefers-color-scheme: dark) {
+  .badge { color: #15151a; }
+}
+
+/* popover */
+
+.popover {
+  position: absolute;
+  top: 38px;
+  right: 16px;
+  width: min(420px, calc(100% - 32px));
+  background: rgba(255, 255, 255, .97);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(0, 0, 0, .1);
+  border-radius: 12px;
+  box-shadow: var(--shadow-popover);
+  overflow: hidden;
+  text-align: left;
+}
+
+@media (prefers-color-scheme: dark) {
+  .popover {
+    background: rgba(30, 30, 34, .97);
+    border-color: rgba(255, 255, 255, .11);
+  }
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.tab {
+  padding: 7px 14px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+}
+
+.tab[aria-selected="true"] {
+  color: var(--text);
+  font-weight: 600;
+  border-bottom-color: var(--text);
+}
+
+.rows { padding: 8px; }
+
+.row {
+  display: flex;
+  gap: 11px;
+  padding: 9px;
+  border-radius: 8px;
+}
+
+.row + .row { margin-top: 2px; }
+
+.avatar {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.row .body { min-width: 0; }
+
+.row .title {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row .where {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ---------- content sections ---------- */
+
+section h2 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 20px;
+}
+
+.block { padding-bottom: 72px; }
+
+.list { border-top: 1px solid var(--border); }
+
+.list > li {
+  list-style: none;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.list { margin: 0; padding-left: 0; }
+
+.note {
+  color: var(--text-muted);
+  font-size: 15px;
+  margin: 20px 0 0;
+}
+
+.privacy {
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px 26px;
+  margin: 0;
+}
+
+.privacy p { margin: 0; }
+.privacy p + p { margin-top: 14px; }
+
+ol.steps {
+  counter-reset: step;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+
+ol.steps > li {
+  counter-increment: step;
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+ol.steps > li::before {
+  content: counter(step);
+  flex: 0 0 auto;
+  width: 24px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--accent);
+}
+
+.scopes {
+  margin-top: 28px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.scopes h3 {
+  margin: 0;
+  padding: 14px 20px;
+  font-size: 15px;
+  font-weight: 600;
+  background: var(--bg-sunken);
+  border-bottom: 1px solid var(--border);
+}
+
+.scopes .body { padding: 20px; }
+
+.scope-row { display: flex; gap: 20px; flex-wrap: wrap; }
+.scope-row + .scope-row {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.scope-row .k {
+  flex: 0 0 132px;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.scope-row .v {
+  flex: 1 1 260px;
+  font-size: 15px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.scope-row ul { margin: 0; padding-left: 20px; }
+.scope-row li + li { margin-top: 8px; }
+
+.warn {
+  margin-top: 20px;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  color: var(--warn-text);
+  border-radius: 10px;
+  padding: 16px 18px;
+  font-size: 15px;
+}
+
+.warn code {
+  background: rgba(0, 0, 0, .05);
+  border-color: var(--warn-border);
+  color: inherit;
+}
+
+@media (prefers-color-scheme: dark) {
+  .warn code { background: rgba(255, 255, 255, .07); }
+}
+
+/* ---------- footer ---------- */
+
+footer {
+  border-top: 1px solid var(--border);
+  padding: 28px 0 44px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+footer .inner {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+footer a { color: var(--text-muted); }
+footer a:hover { color: var(--text); }
+</style>
+</head>
+
+<body>
+
+<div class="wrap wrap--wide">
+  <header class="site-header">
+    <a class="brand" href="/">
+      <!-- The gnotify mark, redrawn from assets/logo.png -->
+      <svg width="23" height="23" viewBox="0 0 64 64" aria-hidden="true">
+        <g fill="none" stroke="currentColor" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M16.5 15.5V48.5"/>
+          <path d="M16.5 15.5H33a13.5 13.5 0 0 1 13.5 13.5V48.5"/>
+          <circle cx="16.5" cy="15.5" r="5"/>
+          <circle cx="16.5" cy="48.5" r="5"/>
+          <circle cx="46.5" cy="48.5" r="5"/>
+        </g>
+      </svg>
+      <span>gnotify</span>
+    </a>
+    <a class="ghlink" href="https://github.com/jasondcamp/gnotify">GitHub</a>
+  </header>
+</div>
+
+<main>
+
+  <div class="wrap">
+    <section class="hero">
+      <h1>gnotify tells you when a pull request needs your review.</h1>
+      <p class="sub">A free, open source macOS menubar app. It stays quiet when nothing needs you.</p>
+
+      <a class="btn" href="https://github.com/jasondcamp/gnotify/releases/latest/download/gnotify.dmg">Download for macOS</a>
+      <p class="meta">macOS 13 or later &middot; signed with an Apple Developer ID and notarized &middot; about 17 MB</p>
+      <a class="source" href="https://github.com/jasondcamp/gnotify">View source on GitHub</a>
+    </section>
+  </div>
+
+  <div class="wrap wrap--wide">
+    <section class="shot">
+      <!-- PLACEHOLDER. This is a CSS mockup standing in for a real screenshot.
+           Replace the whole .mac block with <img src="screenshot.png" alt="..."> once captured. -->
+      <div class="mac">
+        <div class="menubar">
+          <div class="left">
+            <span class="mb-item" aria-hidden="true">&#63743;</span>
+            <span style="font-weight:700">Finder</span>
+            <span class="mb-item optional">File</span>
+            <span class="mb-item optional">Edit</span>
+            <span class="mb-item optional">View</span>
+            <span class="mb-item optional">Go</span>
+            <span class="mb-item optional">Window</span>
+            <span class="mb-item optional">Help</span>
+          </div>
+          <div class="right">
+            <span class="tray">
+              <svg width="13" height="13" viewBox="0 0 64 64" aria-hidden="true">
+                <g fill="none" stroke="currentColor" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M16.5 15.5V48.5"/>
+                  <path d="M16.5 15.5H33a13.5 13.5 0 0 1 13.5 13.5V48.5"/>
+                  <circle cx="16.5" cy="15.5" r="4.5"/>
+                  <circle cx="16.5" cy="48.5" r="4.5"/>
+                  <circle cx="46.5" cy="48.5" r="4.5"/>
+                </g>
+              </svg>
+              <span class="badge">3</span>
+            </span>
+            <span class="mb-item optional">Tue 9:41 AM</span>
+          </div>
+        </div>
+
+        <div class="popover">
+          <div class="tabs" role="tablist" aria-label="gnotify tabs">
+            <span class="tab" role="tab" aria-selected="true">To Review</span>
+            <span class="tab" role="tab" aria-selected="false">My PRs</span>
+          </div>
+          <div class="rows">
+            <div class="row">
+              <span class="avatar">AC</span>
+              <span class="body">
+                <span class="title">fix: handle null pointer in parser</span>
+                <span class="where">platform/api &middot; #1627</span>
+              </span>
+            </div>
+            <div class="row">
+              <span class="avatar">JR</span>
+              <span class="body">
+                <span class="title">feat: add bulk export endpoint</span>
+                <span class="where">platform/web &middot; #1612</span>
+              </span>
+            </div>
+            <div class="row">
+              <span class="avatar">MK</span>
+              <span class="body">
+                <span class="title">chore: bump dependencies</span>
+                <span class="where">infra/ci &middot; #909</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+
+    <section class="block">
+      <h2>What it does</h2>
+      <ul class="list">
+        <li>Notifies you when a PR opens with a review request for you or one of your teams.</li>
+        <li>Badges the menubar icon with the number of PRs currently waiting on you.</li>
+        <li>Lists those PRs in a popover on a To Review tab. Click one to open it in the browser. Your own PRs never appear here.</li>
+        <li>Shows a My PRs tab: every open PR you authored in the org, marked Approved, Changes requested, Awaiting review or Draft, with who said or was asked what.</li>
+        <li>Alerts you when a PR you opened gets an approving review.</li>
+      </ul>
+      <p class="note">Both kinds of notification have a toggle in Settings. With both off, gnotify works as a plain dashboard: list and badge only.</p>
+    </section>
+
+    <section class="block">
+      <h2>Privacy</h2>
+      <div class="privacy">
+        <p>Your GitHub token and settings are stored only in the app's sandboxed storage, on your own Mac.</p>
+        <p>gnotify talks to the GitHub API and nothing else.</p>
+        <p>There is no gnotify server, no account and no telemetry.</p>
+      </div>
+    </section>
+
+    <section class="block">
+      <h2>Setup</h2>
+      <ol class="steps">
+        <li>Launch the app and open Settings. The first launch opens it for you.</li>
+        <li>Paste a GitHub token.</li>
+        <li>Enter the organization to watch.</li>
+        <li><span>Add one or more targets: usernames, or teams written as <code>org/team-slug</code>. "Add me" resolves the token&#39;s own user and adds it.</span></li>
+      </ol>
+
+      <div class="scopes">
+        <h3>Token scopes</h3>
+        <div class="body">
+          <div class="scope-row">
+            <div class="k">Classic PAT</div>
+            <p class="v">Scopes <code>repo</code> and <code>read:org</code>.</p>
+          </div>
+          <div class="scope-row">
+            <div class="k">Fine-grained PAT</div>
+            <div class="v">
+              <ul>
+                <li>Set <strong>Resource owner</strong> to the organization, not your personal account.</li>
+                <li>Grant <strong>Pull requests: Read</strong> on the repos to watch.</li>
+                <li>Grant <strong>Members: Read</strong> on the org for team queries.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="warn">
+        A fine-grained token issued under your personal account can read the org's metadata, but every org-scoped search returns
+        <code>422 The listed users and repositories cannot be searched</code>. If the org restricts fine-grained tokens, an org owner has to approve it.
+      </p>
+    </section>
+
+  </div>
+</main>
+
+<footer>
+  <div class="wrap wrap--wide inner">
+    <span>MIT licensed &middot; <a href="https://github.com/jasondcamp/gnotify">source on GitHub</a></span>
+    <span>Built with Flutter</span>
+  </div>
+</footer>
+
+</body>
+</html>
