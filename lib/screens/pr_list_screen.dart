@@ -31,11 +31,33 @@ class _PrListScreenState extends State<PrListScreen> {
   String _version = '';
   _Tab _tab = _Tab.toReview;
 
+  // One controller per tab so the two lists never inherit each other's
+  // offset, and so the popover can snap back to the newest PRs on open.
+  final _reviewScroll = ScrollController();
+  final _mineScroll = ScrollController();
+
   @override
   void initState() {
     super.initState();
     _loadVersion();
     _loadTab();
+    widget.refreshNotifier?.addListener(_scrollToTop);
+  }
+
+  @override
+  void dispose() {
+    widget.refreshNotifier?.removeListener(_scrollToTop);
+    _reviewScroll.dispose();
+    _mineScroll.dispose();
+    super.dispose();
+  }
+
+  void _scrollToTop() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final c in [_reviewScroll, _mineScroll]) {
+        if (c.hasClients) c.jumpTo(0);
+      }
+    });
   }
 
   Future<void> _loadTab() async {
@@ -46,6 +68,7 @@ class _PrListScreenState extends State<PrListScreen> {
 
   Future<void> _selectTab(_Tab t) async {
     setState(() => _tab = t);
+    _scrollToTop();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_kTabKey, t.index);
   }
@@ -263,6 +286,8 @@ class _PrListScreenState extends State<PrListScreen> {
 
   Widget _buildList(List<PullRequest> prs) {
     return ListView.separated(
+      key: const PageStorageKey('to-review'),
+      controller: _reviewScroll,
       padding: const EdgeInsets.symmetric(vertical: 6),
       itemCount: prs.length,
       separatorBuilder: (_, _) => const SizedBox(height: 4),
@@ -272,6 +297,8 @@ class _PrListScreenState extends State<PrListScreen> {
 
   Widget _buildMyList(List<OwnPullRequest> mine) {
     return ListView.separated(
+      key: const PageStorageKey('my-prs'),
+      controller: _mineScroll,
       padding: const EdgeInsets.symmetric(vertical: 6),
       itemCount: mine.length,
       separatorBuilder: (_, _) => const SizedBox(height: 4),
