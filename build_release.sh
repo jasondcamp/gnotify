@@ -5,7 +5,6 @@ set -e
 APP_NAME="gnotify"
 APP_LOWER="gnotify"
 TEAM_ID="6255B58MWB"
-APPLE_ID="jcamp@girl4.com"
 ARCHIVE_PATH="/tmp/gnotify.xcarchive"
 ICON_DIR="/tmp/gnotify.iconset"
 ICON_SRC="$(dirname "$0")/macos/Runner/Assets.xcassets/AppIcon.appiconset"
@@ -43,9 +42,9 @@ ditto -c -k --keepParent \
   "$ARCHIVE_PATH/Products/Applications/${APP_NAME}.app" \
   "/tmp/gnotify.zip"
 
+# Apple ID, team id and app-specific password all come from the keychain
+# profile; see APP.md for the one-time store-credentials step.
 xcrun notarytool submit "/tmp/gnotify.zip" \
-  --apple-id "$APPLE_ID" \
-  --team-id "$TEAM_ID" \
   --keychain-profile "notarytool" \
   --wait
 
