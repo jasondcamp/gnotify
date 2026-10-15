@@ -67,3 +67,7 @@ waiting on you. Once you submit a review GitHub drops the review
 request, so the PR falls off the list; if someone re-requests you, it notifies again.
 
 Settings and the token are stored in the app's sandboxed `UserDefaults`.
+
+## License
+
+[MIT](LICENSE)
