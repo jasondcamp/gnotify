@@ -129,17 +129,33 @@ class GitHubService {
     return RequestedReviewers.fromPullJson(json, owner: repoFullName.split('/').first);
   }
 
-  /// Latest decision per reviewer login on a PR (APPROVED, CHANGES_REQUESTED
-  /// or DISMISSED). Comments and pending reviews are not decisions.
-  Future<Map<String, String>> getReviewDecisions(String repoFullName, int number) async {
+  /// All reviews on a PR, oldest first, as returned by the API.
+  Future<List<Map<String, dynamic>>> getReviews(String repoFullName, int number) async {
     final response = await http.get(
       Uri.parse('$_baseUrl/repos/$repoFullName/pulls/$number/reviews?per_page=100'),
       headers: _headers,
     );
-    if (response.statusCode != 200) return const {};
-    final reviews = (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
-    return latestDecisions(reviews);
+    if (response.statusCode != 200) return const [];
+    return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
   }
+
+  /// Latest decision per reviewer login on a PR (APPROVED, CHANGES_REQUESTED
+  /// or DISMISSED). Comments and pending reviews are not decisions.
+  Future<Map<String, String>> getReviewDecisions(String repoFullName, int number) async =>
+      latestDecisions(await getReviews(repoFullName, number));
+
+  /// Copilot code review shows up as the requested reviewer `Copilot` and
+  /// submits under `copilot-pull-request-reviewer[bot]`.
+  static bool isCopilot(String login) => login.toLowerCase().contains('copilot');
+
+  /// Ids of submitted (non-pending) reviews written by Copilot.
+  static Set<int> copilotReviewIds(List<Map<String, dynamic>> reviews) => {
+        for (final r in reviews)
+          if (r['id'] is int &&
+              r['state'] != 'PENDING' &&
+              isCopilot((r['user'] as Map<String, dynamic>?)?['login'] as String? ?? ''))
+            r['id'] as int,
+      };
 
   /// Reduces a chronological review list to each reviewer's latest decision.
   static Map<String, String> latestDecisions(List<Map<String, dynamic>> reviews) {

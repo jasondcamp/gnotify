@@ -33,8 +33,12 @@ class WatcherService extends ChangeNotifier {
 
   /// Review decisions and outstanding requests for the user's own PRs,
   /// likewise keyed on updated_at.
-  final Map<int, ({DateTime updatedAt, Map<String, String> decisions, RequestedReviewers reviewers})>
+  final Map<int, ({DateTime updatedAt, Map<String, String> decisions, Set<int> copilotReviews, RequestedReviewers reviewers})>
       _ownPrCache = {};
+
+  Set<int> _copilotSeenIds = {};
+  bool _copilotNeedBaseline = true;
+  bool _lastNotifyCopilot = true;
 
   List<PullRequest> _pullRequests = const [];
   List<PullRequest> get pullRequests => _pullRequests;
@@ -60,6 +64,10 @@ class WatcherService extends ChangeNotifier {
     _approvedIds = approved ?? {};
     _approvalsNeedBaseline = approved == null;
     _lastNotifyApprovals = settingsService.settings.notifyApprovals;
+    final copilotSeen = await settingsService.loadCopilotReviewIds();
+    _copilotSeenIds = copilotSeen ?? {};
+    _copilotNeedBaseline = copilotSeen == null;
+    _lastNotifyCopilot = settingsService.settings.notifyCopilotReviews;
     settingsService.addListener(_onSettingsChanged);
     _restartTimer();
     await refresh();
@@ -70,6 +78,8 @@ class WatcherService extends ChangeNotifier {
     github.token = s.token;
     if (s.notifyApprovals && !_lastNotifyApprovals) _approvalsNeedBaseline = true;
     _lastNotifyApprovals = s.notifyApprovals;
+    if (s.notifyCopilotReviews && !_lastNotifyCopilot) _copilotNeedBaseline = true;
+    _lastNotifyCopilot = s.notifyCopilotReviews;
     _restartTimer();
     refresh();
   }
@@ -139,7 +149,11 @@ class WatcherService extends ChangeNotifier {
       }
       if (fresh.isNotEmpty) await settingsService.saveNotifiedIds(_notifiedIds);
 
-      await _refreshMyPullRequests(settings.org, notify: settings.notifyApprovals);
+      await _refreshMyPullRequests(
+        settings.org,
+        notifyApprovals: settings.notifyApprovals,
+        notifyCopilot: settings.notifyCopilotReviews,
+      );
     } on GitHubException catch (e) {
       _error = switch (e.statusCode) {
         401 => 'Token rejected (401)',
@@ -180,7 +194,11 @@ class WatcherService extends ChangeNotifier {
   /// Rebuild the My PRs tab and announce newly approved ones. Approval is
   /// announced once per PR while it stays approved; a PR that drops out
   /// (merged, closed, approval dismissed) and comes back is announced again.
-  Future<void> _refreshMyPullRequests(String org, {required bool notify}) async {
+  Future<void> _refreshMyPullRequests(
+    String org, {
+    required bool notifyApprovals,
+    required bool notifyCopilot,
+  }) async {
     final mine = await github.searchMyOpenPrs(org: org);
     final own = <OwnPullRequest>[];
     for (final pr in mine) {
@@ -190,6 +208,41 @@ class WatcherService extends ChangeNotifier {
     _ownPrCache.removeWhere((id, _) => !mine.any((p) => p.id == id));
     _myPullRequests = own;
 
+    await _announceCopilotReviews(own, notify: notifyCopilot);
+    await _announceApprovals(own, notify: notifyApprovals);
+  }
+
+  /// Copilot reviews are announced once per review id. Ids are kept while the
+  /// PR stays open, so a second Copilot pass on the same PR is announced too.
+  Future<void> _announceCopilotReviews(List<OwnPullRequest> own, {required bool notify}) async {
+    final current = <int, OwnPullRequest>{
+      for (final o in own)
+        for (final id in o.copilotReviewIds) id: o,
+    };
+    final fresh = current.keys.where((id) => !_copilotSeenIds.contains(id)).toList();
+    _copilotSeenIds = _copilotSeenIds.intersection(current.keys.toSet());
+
+    if (_copilotNeedBaseline || !notify) {
+      _copilotSeenIds = current.keys.toSet();
+      if (notify) _copilotNeedBaseline = false;
+      await settingsService.saveCopilotReviewIds(_copilotSeenIds);
+      return;
+    }
+
+    for (final id in fresh) {
+      final o = current[id]!;
+      await _notifyRaw(
+        id: 'copilot-$id',
+        title: 'Copilot reviewed: ${o.pr.repoName} #${o.pr.number}',
+        body: o.pr.title,
+        url: o.pr.htmlUrl,
+      );
+      _copilotSeenIds.add(id);
+    }
+    if (fresh.isNotEmpty) await settingsService.saveCopilotReviewIds(_copilotSeenIds);
+  }
+
+  Future<void> _announceApprovals(List<OwnPullRequest> own, {required bool notify}) async {
     final approved = own.where((o) => o.state == ReviewState.approved).toList();
     final currentIds = approved.map((o) => o.pr.id).toSet();
     final fresh = approved.where((o) => !_approvedIds.contains(o.pr.id)).toList();
@@ -221,9 +274,14 @@ class WatcherService extends ChangeNotifier {
     var cached = _ownPrCache[pr.id];
     if (cached == null || cached.updatedAt != pr.updatedAt) {
       try {
-        final decisions = await github.getReviewDecisions(pr.repoFullName, pr.number);
+        final reviews = await github.getReviews(pr.repoFullName, pr.number);
         final reviewers = await github.getRequestedReviewers(pr.repoFullName, pr.number);
-        cached = (updatedAt: pr.updatedAt, decisions: decisions, reviewers: reviewers);
+        cached = (
+          updatedAt: pr.updatedAt,
+          decisions: GitHubService.latestDecisions(reviews),
+          copilotReviews: GitHubService.copilotReviewIds(reviews),
+          reviewers: reviewers,
+        );
         _ownPrCache[pr.id] = cached;
       } catch (e) {
         debugPrint('own PR details for ${pr.repoFullName}#${pr.number} failed: $e');
@@ -234,6 +292,7 @@ class WatcherService extends ChangeNotifier {
       pr: pr,
       latestDecisions: cached.decisions,
       pendingReviewers: {...cached.reviewers.users, ...cached.reviewers.teams},
+      copilotReviewIds: cached.copilotReviews,
     );
   }
 

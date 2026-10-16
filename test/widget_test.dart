@@ -66,6 +66,33 @@ void main() {
     );
   });
 
+  test('Copilot reviews are detected and reported separately from humans', () {
+    final reviews = [
+      {'id': 1, 'user': {'login': 'alice'}, 'state': 'COMMENTED'},
+      {'id': 2, 'user': {'login': 'copilot-pull-request-reviewer[bot]'}, 'state': 'COMMENTED'},
+      {'id': 3, 'user': {'login': 'copilot-pull-request-reviewer[bot]'}, 'state': 'PENDING'},
+    ];
+    expect(GitHubService.copilotReviewIds(reviews), {2});
+
+    final pr = PullRequest.fromSearchJson(_item(9), target: '@me');
+    final reviewing = OwnPullRequest.derive(
+      pr: pr,
+      latestDecisions: const {},
+      pendingReviewers: {'copilot', 'bob'},
+    );
+    expect(reviewing.copilot, CopilotStatus.reviewing);
+    expect(reviewing.pendingReviewers, {'bob'});
+
+    final reviewed = OwnPullRequest.derive(
+      pr: pr,
+      latestDecisions: const {},
+      pendingReviewers: const {},
+      copilotReviewIds: {2},
+    );
+    expect(reviewed.copilot, CopilotStatus.reviewed);
+    expect(reviewed.state, ReviewState.awaiting);
+  });
+
   test('latestApprovers keeps only reviewers whose last decision is approval', () {
     final approvers = GitHubService.latestApprovers([
       _review('alice', 'APPROVED'),

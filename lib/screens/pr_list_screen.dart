@@ -516,13 +516,19 @@ class _OwnPrRow extends StatelessWidget {
       ReviewState.draft => ('Draft', const Color(0xFF6B7280), const Color(0xFFF3F4F6)),
       ReviewState.awaiting => ('Awaiting review', const Color(0xFFB45309), const Color(0xFFFEF3C7)),
     };
-    final detail = switch (own.state) {
+    final base = switch (own.state) {
       ReviewState.approved => 'by ${own.approvers.join(', ')}',
       ReviewState.changesRequested => 'by ${own.changesRequestedBy.join(', ')}',
       _ => own.pendingReviewers.isEmpty
-          ? 'no reviewers requested'
+          ? (own.copilot == CopilotStatus.none ? 'no reviewers requested' : '')
           : 'asked ${own.pendingReviewers.map((r) => r.contains('/') ? r.split('/').last : r).join(', ')}',
     };
+    final copilot = switch (own.copilot) {
+      CopilotStatus.reviewing => 'Copilot reviewing',
+      CopilotStatus.reviewed => 'Copilot reviewed',
+      CopilotStatus.none => '',
+    };
+    final detail = [base, copilot].where((t) => t.isNotEmpty).join(' · ');
 
     return _Card(
       onTap: onTap,
