@@ -228,7 +228,7 @@ class _PrListScreenState extends State<PrListScreen> {
 
     return Row(
       children: [
-        tab(_Tab.toReview, 'To review', toReview),
+        tab(_Tab.toReview, 'To Review', toReview),
         tab(_Tab.mine, 'My PRs', mine),
       ],
     );
