@@ -157,7 +157,7 @@ code {
   grid-template-columns: 1.15fr .85fr;
   gap: 48px;
   align-items: end;
-  padding: 72px 0 48px;
+  padding: 18px 0 48px;
 }
 .hero h1 {
   margin: 0;
@@ -458,11 +458,9 @@ h2 em { font-style: italic; color: var(--accent); }
   gap: 28px 32px;
 }
 .feat article { position: relative; padding-top: 22px; border-top: 1px solid var(--line); }
-.feat article:nth-child(1) { grid-column: 1 / span 5; }
-.feat article:nth-child(2) { grid-column: 7 / span 6; margin-top: 72px; }
-.feat article:nth-child(3) { grid-column: 2 / span 5; margin-top: -24px; }
-.feat article:nth-child(4) { grid-column: 8 / span 5; margin-top: 48px; }
-.feat article:nth-child(5) { grid-column: 1 / span 6; margin-top: 8px; }
+.feat article:nth-child(odd)  { grid-column: 1 / span 6; }
+.feat article:nth-child(even) { grid-column: 7 / span 6; }
+.feat article:nth-child(5)    { grid-column: 4 / span 6; }
 .feat .num {
   position: absolute; top: -18px; left: 0;
   background: var(--ink);
@@ -532,14 +530,14 @@ h2 em { font-style: italic; color: var(--accent); }
 .panel .note { padding: 12px 18px 8px; font-size: 12px; color: var(--paper-faint); border-top: 1px solid var(--line); }
 
 /* privacy */
-.vows { border-top: 1px solid var(--line); }
+.vows { border-top: 1px solid var(--line); margin-left: clamp(0px, 8vw, 120px); }
 .vows p {
   margin: 0;
-  padding: 30px 0;
+  padding: 30px 0 30px 24px;
   border-bottom: 1px solid var(--line);
   display: grid;
-  grid-template-columns: 90px 1fr;
-  gap: 24px;
+  grid-template-columns: 110px 1fr;
+  gap: 32px;
   align-items: baseline;
   font-size: clamp(22px, 2.6vw, 36px);
   line-height: 1.2;
@@ -638,10 +636,10 @@ footer .big {
 
 /* ---------- responsive ---------- */
 @media (max-width: 960px) {
-  .hero { grid-template-columns: 1fr; gap: 12px; padding-top: 56px; }
+  .hero { grid-template-columns: 1fr; gap: 12px; padding-top: 16px; }
   .count { justify-self: start; text-align: left; order: -1; }
   .count .n { font-size: clamp(120px, 30vw, 220px); }
-  .feat article { grid-column: 1 / -1 !important; margin-top: 0 !important; }
+  .feat article { grid-column: 1 / -1 !important; }
   .quiet, .setup { grid-template-columns: 1fr; gap: 32px; }
   .stage .say { max-width: none; padding: 40px 24px 420px; }
   .popover { right: 16px; left: 16px; width: auto; top: auto; bottom: 20px; }
@@ -652,7 +650,8 @@ footer .big {
   body { font-size: 17px; }
   .top nav { gap: 16px; }
   .top nav a:not(.dl) { display: none; }
-  .vows p { grid-template-columns: 1fr; gap: 8px; }
+  .vows { margin-left: 0; }
+  .vows p { grid-template-columns: 1fr; gap: 8px; padding-left: 16px; }
   .scopes .rw { grid-template-columns: 1fr; gap: 8px; }
   .steps li { grid-template-columns: 40px 1fr; }
 }
