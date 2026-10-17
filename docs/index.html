@@ -448,6 +448,7 @@ h2 {
   font-variation-settings: "opsz" 96, "SOFT" 60, "WONK" 1;
 }
 h2 em { font-style: italic; color: var(--accent); }
+h2.centered { text-align: center; }
 
 /* features */
 .feat {
@@ -498,6 +499,7 @@ h2 em { font-style: italic; color: var(--accent); }
 }
 .quiet p.big strong { color: var(--paper); font-weight: 500; }
 .panel {
+  margin-top: 28px;
   border: 1px solid var(--line-strong);
   border-radius: 12px;
   background: var(--ink-2);
@@ -749,7 +751,7 @@ footer .big {
     <!-- ================= what it does ================= -->
     <section id="what">
       <div class="kicker"><span class="mono">What it does</span></div>
-      <h2 class="rv">Five things, and it does <em>nothing else.</em></h2>
+      <h2 class="rv centered">Five things, and it does <em>nothing else.</em></h2>
       <div class="feat">
         <article class="rv"><span class="num">01</span><h3>Tells you when you&rsquo;re asked</h3><p>A notification when a PR opens with a review request for <strong>you or one of your teams</strong>. Submit your review and it drops off. If someone re-requests you, it tells you again.</p></article>
         <article class="rv"><span class="num">02</span><h3>Counts what&rsquo;s waiting</h3><p>The menubar icon carries the number of PRs currently waiting on you. <strong>Zero means zero</strong>: no icon noise when there&rsquo;s nothing to do.</p></article>
@@ -762,9 +764,9 @@ footer .big {
     <!-- ================= quiet ================= -->
     <section>
       <div class="kicker"><span class="mono">Quiet by default</span></div>
+      <h2 class="rv centered">Every alert has an <em>off switch.</em></h2>
       <div class="quiet">
         <div>
-          <h2 class="rv">Every alert has<br>an <em>off switch.</em></h2>
           <p class="big rv">Turn all three off and gnotify becomes a dashboard: <strong>the list and the badge keep updating, nothing ever pops up.</strong> Turn one back on and it starts from now, not from everything it missed.</p>
         </div>
         <div class="panel rv" aria-label="The Notifications section of gnotify's settings, three switches">
