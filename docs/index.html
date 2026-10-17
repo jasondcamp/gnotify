@@ -651,6 +651,8 @@ footer .big {
 }
 @media (max-width: 560px) {
   body { font-size: 17px; }
+  footer .in { flex-direction: column; align-items: center; text-align: center; gap: 10px; }
+  footer .big { text-align: center; margin-bottom: 16px; }
   .top nav { gap: 16px; }
   .top nav a:not(.dl) { display: none; }
   .vows { margin-left: 0; }
@@ -688,7 +690,7 @@ footer .big {
     <!-- ================= hero ================= -->
     <section class="hero">
       <div>
-        <h1>See which PRs need your review.<br>Follow <em>your own</em> until they merge.<br>All from the menu&nbsp;bar.</h1>
+        <h1>See which PRs need your review. <br>Follow <em>your own</em> until they merge. <br>All from the menu&nbsp;bar.</h1>
         <p class="lede">gnotify is a <strong>free, open source</strong> macOS menubar app. It watches a GitHub org, counts the reviews you owe, and says something only when that changes.</p>
         <div class="cta">
           <a class="btn" href="https://github.com/jasondcamp/gnotify/releases/latest/download/gnotify.dmg">
