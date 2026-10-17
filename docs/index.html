@@ -154,20 +154,20 @@ code {
 /* ---------- hero ---------- */
 .hero {
   display: grid;
-  grid-template-columns: 1.15fr .85fr;
-  gap: 48px;
+  grid-template-columns: 1.5fr .5fr;
+  gap: 32px;
   align-items: end;
   padding: 18px 0 48px;
 }
 .hero h1 {
   margin: 0;
   font-weight: 300;
-  font-size: clamp(42px, 5.9vw, 86px);
-  line-height: .98;
-  letter-spacing: -.025em;
+  font-size: clamp(38px, 4.5vw, 64px);
+  line-height: 1.06;
+  letter-spacing: -.02em;
   font-variation-settings: "opsz" 144, "SOFT" 60, "WONK" 1;
-  text-wrap: balance;
 }
+@media (max-width: 1100px) { .hero h1 br { display: none; } }
 .hero h1 em {
   font-style: italic;
   font-weight: 400;
@@ -689,7 +689,7 @@ footer .big {
     <!-- ================= hero ================= -->
     <section class="hero">
       <div>
-        <h1>See which PRs need your review. Follow <em>your own</em> until they merge.<br>All from the menu&nbsp;bar.</h1>
+        <h1>See which PRs need your review.<br>Follow <em>your own</em> until they merge.<br>All from the menu&nbsp;bar.</h1>
         <p class="lede">gnotify is a <strong>free, open source</strong> macOS menubar app. It watches a GitHub org, counts the reviews you owe, and says something only when that changes.</p>
         <div class="cta">
           <a class="btn" href="https://github.com/jasondcamp/gnotify/releases/latest/download/gnotify.dmg">
