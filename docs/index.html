@@ -820,11 +820,12 @@ footer .big {
   <footer>
     <div class="in">
       <div class="big" aria-hidden="true">gnotify</div>
-      <span class="mono">&copy; 2026 Jason Camp. All rights reserved.</span>
+      <span class="mono">&copy; <span id="year">2026</span> Jason Camp. All rights reserved.</span>
       <span class="mono">Built with <span class="heart" aria-label="love">&hearts;</span> by Jason Camp</span>
     </div>
   </footer>
 </div>
 
+<script>document.getElementById('year').textContent = new Date().getFullYear();</script>
 </body>
 </html>
