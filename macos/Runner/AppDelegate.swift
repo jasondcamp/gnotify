@@ -247,6 +247,28 @@ class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate {
     case "quit":
       result(nil)
       NSApp.terminate(nil)
+    case "secureRead":
+      guard let key = (call.arguments as? [String: Any])?["key"] as? String else {
+        result(FlutterError(code: "bad_args", message: "secureRead needs key", details: nil)); return
+      }
+      result(KeychainStore.read(key))
+    case "secureWrite":
+      guard let args = call.arguments as? [String: Any],
+            let key = args["key"] as? String, let value = args["value"] as? String else {
+        result(FlutterError(code: "bad_args", message: "secureWrite needs key and value", details: nil)); return
+      }
+      let status = KeychainStore.write(key, value)
+      status == errSecSuccess
+        ? result(nil)
+        : result(FlutterError(code: "keychain_\(status)", message: KeychainStore.describe(status), details: nil))
+    case "secureDelete":
+      guard let key = (call.arguments as? [String: Any])?["key"] as? String else {
+        result(FlutterError(code: "bad_args", message: "secureDelete needs key", details: nil)); return
+      }
+      let status = KeychainStore.delete(key)
+      (status == errSecSuccess || status == errSecItemNotFound)
+        ? result(nil)
+        : result(FlutterError(code: "keychain_\(status)", message: KeychainStore.describe(status), details: nil))
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -323,5 +345,55 @@ class PopoverHostViewController: NSViewController {
     hosted.view.autoresizingMask = [.width, .height]
     container.addSubview(hosted.view)
     view = container
+  }
+}
+
+/// Generic-password items in the user's login keychain, one per key, under
+/// the app's bundle id as the service. Encrypted at rest by the keychain;
+/// access from other code signatures goes through a system prompt.
+enum KeychainStore {
+  private static let service = Bundle.main.bundleIdentifier ?? "com.jasoncamp.gnotify"
+
+  private static func baseQuery(_ key: String) -> [String: Any] {
+    [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: service,
+      kSecAttrAccount as String: key,
+    ]
+  }
+
+  static func read(_ key: String) -> String? {
+    var query = baseQuery(key)
+    query[kSecReturnData as String] = true
+    query[kSecMatchLimit as String] = kSecMatchLimitOne
+    var item: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &item)
+    guard status == errSecSuccess, let data = item as? Data else {
+      if status != errSecItemNotFound { NSLog("Keychain read failed: \(describe(status))") }
+      return nil
+    }
+    return String(data: data, encoding: .utf8)
+  }
+
+  static func write(_ key: String, _ value: String) -> OSStatus {
+    let data = Data(value.utf8)
+    let update: [String: Any] = [kSecValueData as String: data]
+    var status = SecItemUpdate(baseQuery(key) as CFDictionary, update as CFDictionary)
+    if status == errSecItemNotFound {
+      var add = baseQuery(key)
+      add[kSecValueData as String] = data
+      add[kSecAttrLabel as String] = "gnotify GitHub token"
+      status = SecItemAdd(add as CFDictionary, nil)
+    }
+    if status != errSecSuccess { NSLog("Keychain write failed: \(describe(status))") }
+    return status
+  }
+
+  static func delete(_ key: String) -> OSStatus {
+    SecItemDelete(baseQuery(key) as CFDictionary)
+  }
+
+  static func describe(_ status: OSStatus) -> String {
+    (SecCopyErrorMessageString(status, nil) as String?) ?? "OSStatus \(status)"
   }
 }

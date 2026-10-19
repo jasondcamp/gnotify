@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'secure_store.dart';
 
 /// Persisted user configuration. Targets are GitHub usernames or team slugs;
 /// a team is written as `org/team-slug` (the org prefix is optional and will
@@ -63,13 +64,15 @@ class SettingsService extends ChangeNotifier {
   static const _kApprovedIds = 'approved_pr_ids';
   static const _kCopilotReviewIds = 'copilot_review_ids';
 
+  final SecureStore _secure = SecureStore();
+
   Settings _settings = const Settings();
   Settings get settings => _settings;
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     _settings = Settings(
-      token: prefs.getString(_kToken) ?? '',
+      token: await _loadToken(prefs),
       org: prefs.getString(_kOrg) ?? '',
       targets: prefs.getStringList(_kTargets) ?? const [],
       pollIntervalSeconds: prefs.getInt(_kPollInterval) ?? 60,
@@ -82,7 +85,7 @@ class SettingsService extends ChangeNotifier {
 
   Future<void> save(Settings s) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kToken, s.token.trim());
+    await _secure.write(_kToken, s.token.trim());
     await prefs.setString(_kOrg, s.org.trim());
     await prefs.setStringList(
       _kTargets,
@@ -93,6 +96,29 @@ class SettingsService extends ChangeNotifier {
     await prefs.setBool(_kNotifyApprovals, s.notifyApprovals);
     await prefs.setBool(_kNotifyCopilot, s.notifyCopilotReviews);
     await load();
+  }
+
+  /// The token comes from the Keychain. Builds before 1.0.6 kept it in the
+  /// UserDefaults plist; if one is still there, move it across once and
+  /// scrub it from the plist.
+  Future<String> _loadToken(SharedPreferences prefs) async {
+    final legacy = prefs.getString(_kToken);
+    if (legacy != null) {
+      if (legacy.isNotEmpty) {
+        try {
+          await _secure.write(_kToken, legacy);
+        } catch (_) {
+          return legacy; // keychain unavailable: keep working, retry next launch
+        }
+      }
+      await prefs.remove(_kToken);
+      if (legacy.isNotEmpty) return legacy;
+    }
+    try {
+      return await _secure.read(_kToken) ?? '';
+    } catch (_) {
+      return '';
+    }
   }
 
   /// IDs of PRs we have already sent a notification for. Persisted so a

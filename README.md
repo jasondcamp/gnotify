@@ -68,7 +68,9 @@ the approvers. The badge and list are unaffected; they only ever count reviews
 waiting on you. Once you submit a review GitHub drops the review
 request, so the PR falls off the list; if someone re-requests you, it notifies again.
 
-Settings and the token are stored in the app's sandboxed `UserDefaults`.
+The token is stored in the macOS Keychain. The remaining settings live in the
+app's sandboxed `UserDefaults`. A token saved by a build before 1.0.6 is moved
+into the Keychain on first launch and removed from the plist.
 
 ## License
 
