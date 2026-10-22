@@ -46,27 +46,30 @@ See [APP.md](APP.md) for the signing and notarization details.
 
 ## How it works
 
-Every poll runs one GitHub search per target:
+Every poll is **one GraphQL request** (a second or third only if the org has
+more than 100 matching PRs). The search covers both tabs at once:
 
 ```
-is:pr is:open draft:false org:<org> review-requested:<user>
-is:pr is:open draft:false org:<org> team-review-requested:<org>/<team>
+org:<org> is:pr is:open ((author:@me) OR (-author:@me draft:false (review-requested:<user> OR team-review-requested:<org>/<team> ...)))
 ```
 
-Results are merged by PR id. Because `review-requested:<user>` also matches
-requests sent to a team the user belongs to, each PR is then read once (cached
-until it changes) and the chips show only the targets it names directly. The
-count is pushed to the menubar, and any PR not seen before gets a notification. The My PRs tab comes from one more search:
+and the same request returns each PR's requested reviewers and every
+reviewer's latest review, so there are no follow-up calls per PR. GraphQL has
+its own 5,000 points/hour budget; a poll costs 1. The remaining budget shows
+in the popover footer.
 
-```
-is:pr is:open org:<org> author:@me
-```
+Review-request chips show only the targets a PR names directly, because
+`review-requested:<user>` also matches requests sent to a team the user
+belongs to. The To Review count is pushed to the menubar, and any PR not seen
+before gets a notification. A PR whose state becomes Approved, or that picks
+up a Copilot review, is announced once.
 
-Each of those is read once (cached until it changes) for its reviews and
-outstanding requests. A PR whose state becomes Approved is announced once, naming
-the approvers. The badge and list are unaffected; they only ever count reviews
-waiting on you. Once you submit a review GitHub drops the review
-request, so the PR falls off the list; if someone re-requests you, it notifies again.
+If GitHub answers with a rate limit, the app waits as long as it was told (at
+least a minute, doubling on repeat, capped at 15 minutes) before trying again,
+and popover opens within 10 seconds of the last poll do not trigger another.
+
+A local log (`Settings → Log`) records every poll, its cost, notifications
+sent, and any GitHub errors. The token is never written to it.
 
 The token is stored in the macOS Keychain. The remaining settings live in the
 app's sandboxed `UserDefaults`. A token saved by a build before 1.0.6 is moved

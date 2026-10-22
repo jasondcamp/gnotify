@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'app_log.dart';
 import 'secure_store.dart';
 
 /// Persisted user configuration. Targets are GitHub usernames or team slugs;
@@ -63,6 +64,12 @@ class SettingsService extends ChangeNotifier {
   static const _kNotifyCopilot = 'notify_copilot_reviews';
   static const _kApprovedIds = 'approved_pr_ids';
   static const _kCopilotReviewIds = 'copilot_review_ids';
+  static const _kIdsVersion = 'ids_version';
+
+  /// Bumped when the meaning of the persisted PR/review ids changes, so the
+  /// watcher can take one silent baseline instead of re-announcing everything.
+  /// 1: REST issue ids (through 1.0.6). 2: GraphQL databaseIds.
+  static const currentIdsVersion = 2;
 
   final SecureStore _secure = SecureStore();
 
@@ -95,6 +102,11 @@ class SettingsService extends ChangeNotifier {
     await prefs.setBool(_kNotifyReviewRequests, s.notifyReviewRequests);
     await prefs.setBool(_kNotifyApprovals, s.notifyApprovals);
     await prefs.setBool(_kNotifyCopilot, s.notifyCopilotReviews);
+    AppLog.instance.info(
+      'settings saved: org=${s.org.trim()} targets=${s.targets} interval=${s.pollIntervalSeconds}s '
+      'notify(review=${s.notifyReviewRequests} approvals=${s.notifyApprovals} copilot=${s.notifyCopilotReviews}) '
+      'token=${s.token.trim().isEmpty ? "none" : "set"}',
+    );
     await load();
   }
 
@@ -107,7 +119,9 @@ class SettingsService extends ChangeNotifier {
       if (legacy.isNotEmpty) {
         try {
           await _secure.write(_kToken, legacy);
-        } catch (_) {
+          AppLog.instance.info('token migrated from preferences to keychain');
+        } catch (e) {
+          AppLog.instance.warn('keychain write failed, keeping token in preferences: $e');
           return legacy; // keychain unavailable: keep working, retry next launch
         }
       }
@@ -123,6 +137,16 @@ class SettingsService extends ChangeNotifier {
 
   /// IDs of PRs we have already sent a notification for. Persisted so a
   /// restart does not re-notify for everything currently in the list.
+  Future<int> loadIdsVersion() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_kIdsVersion) ?? 1;
+  }
+
+  Future<void> saveIdsVersion(int v) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kIdsVersion, v);
+  }
+
   Future<Set<int>> loadNotifiedIds() => _loadIds(_kNotifiedIds);
   Future<void> saveNotifiedIds(Set<int> ids) => _saveIds(_kNotifiedIds, ids);
 

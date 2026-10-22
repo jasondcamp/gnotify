@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'services/app_log.dart';
 import 'services/github_service.dart';
 import 'services/settings_service.dart';
 import 'services/watcher_service.dart';
@@ -8,6 +10,13 @@ import 'screens/settings_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AppLog.instance.init();
+  try {
+    final info = await PackageInfo.fromPlatform();
+    AppLog.instance.info('gnotify ${info.version}+${info.buildNumber} starting');
+  } catch (_) {
+    AppLog.instance.info('gnotify starting');
+  }
   runApp(const GnotifyApp());
 }
 
@@ -77,7 +86,7 @@ class _GnotifyShellState extends State<GnotifyShell> {
         if (mounted) setState(() => _showSettings = true);
         break;
       case 'refresh':
-        _watcher.refresh();
+        _watcher.refresh(force: true);
         break;
     }
   }
