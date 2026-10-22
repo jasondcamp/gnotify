@@ -310,9 +310,16 @@ class _PrListScreenState extends State<PrListScreen> {
     final updated = widget.watcher.lastUpdated;
     final error = widget.watcher.error;
     final rl = widget.watcher.rateLimit;
+    final warning = widget.watcher.warning;
     final budget = rl == null ? '' : ' · API ${rl.remaining}/${rl.limit}';
     final status = error ??
+        warning ??
         (updated != null ? 'Updated ${_relative(updated)}$budget' : 'Waiting for first refresh');
+    final statusColor = error != null
+        ? Colors.red
+        : warning != null
+            ? const Color(0xFFB45309)
+            : const Color(0xFF9CA3AF);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Row(
@@ -320,10 +327,7 @@ class _PrListScreenState extends State<PrListScreen> {
           Expanded(
             child: Text(
               status,
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                color: error != null ? Colors.red : const Color(0xFF9CA3AF),
-              ),
+              style: GoogleFonts.inter(fontSize: 11, color: statusColor),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),

@@ -119,6 +119,13 @@ class GitHubService {
   String _token = '';
   set token(String value) => _token = value;
 
+  /// Human-readable summary of non-fatal GraphQL errors from the last
+  /// request, or null when it was clean. Typically a missing token
+  /// permission for part of the data (teams need Members: Read).
+  String? get lastPartialWarning => _lastPartialWarning;
+  String? _lastPartialWarning;
+  String? _lastPartialSignature;
+
   Map<String, String> get _headers => {
         'Accept': 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
@@ -302,10 +309,43 @@ query($q: String!, $after: String) {
         final status = rateLimited || types.contains('FORBIDDEN') || types.contains('INSUFFICIENT_SCOPES') ? 403 : 422;
         throw GitHubException(status, message, rateLimited: rateLimited, retryAfter: _retryAfter(response.headers));
       }
-      AppLog.instance.warn('GraphQL partial errors: $message');
+      _notePartialErrors(errors);
+    } else {
+      _lastPartialWarning = null;
+      _lastPartialSignature = null;
     }
     if (data == null) throw GitHubException(502, 'Empty GraphQL response');
     return data;
+  }
+
+  /// Partial errors repeat on every poll for as long as the cause exists, so
+  /// they are logged once per distinct set and summarised for the footer.
+  void _notePartialErrors(List<Map> errors) {
+    final byPath = <String, int>{};
+    for (final e in errors) {
+      final path = ((e['path'] as List?) ?? const []).whereType<String>().join('.');
+      final key = '${e['type'] ?? 'ERROR'} ${e['message']} @ $path';
+      byPath[key] = (byPath[key] ?? 0) + 1;
+    }
+    final signature = (byPath.keys.toList()..sort()).join('|');
+    final paths = byPath.keys.join(' ');
+    final notAccessible = paths.contains('not accessible by');
+
+    String warning;
+    if (notAccessible && paths.contains('requestedReviewer')) {
+      warning = 'Token cannot read team review requests. Add Members: Read on the org.';
+    } else if (notAccessible) {
+      warning = 'Token is missing a permission for part of the data. See the log.';
+    } else {
+      warning = 'GitHub returned ${errors.length} partial error(s). See the log.';
+    }
+    _lastPartialWarning = warning;
+
+    if (signature == _lastPartialSignature) return;
+    _lastPartialSignature = signature;
+    final detail = byPath.entries.map((e) => '${e.value}× ${e.key}').join('; ');
+    AppLog.instance.warn('GraphQL partial errors (${errors.length}), data still usable: $detail');
+    AppLog.instance.warn('hint: $warning');
   }
 
   GitHubException _restError(http.Response response) {
