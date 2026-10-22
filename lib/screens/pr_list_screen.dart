@@ -164,7 +164,7 @@ class _PrListScreenState extends State<PrListScreen> {
               iconSize: 18,
               visualDensity: VisualDensity.compact,
               icon: const Icon(Icons.refresh, color: Color(0xFF6B7280)),
-              onPressed: widget.watcher.refresh,
+              onPressed: () => widget.watcher.refresh(force: true),
             ),
           IconButton(
             tooltip: 'Settings',
@@ -309,8 +309,10 @@ class _PrListScreenState extends State<PrListScreen> {
   Widget _buildFooter() {
     final updated = widget.watcher.lastUpdated;
     final error = widget.watcher.error;
+    final rl = widget.watcher.rateLimit;
+    final budget = rl == null ? '' : ' · API ${rl.remaining}/${rl.limit}';
     final status = error ??
-        (updated != null ? 'Updated ${_relative(updated)}' : 'Waiting for first refresh');
+        (updated != null ? 'Updated ${_relative(updated)}$budget' : 'Waiting for first refresh');
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Row(

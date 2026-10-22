@@ -47,6 +47,24 @@ class PullRequest {
     );
   }
 
+  /// Parses a `PullRequest` node from the GraphQL search used for polling.
+  factory PullRequest.fromGraphNode(Map<String, dynamic> n, {Set<String> requestedFrom = const {}}) {
+    final author = n['author'] as Map<String, dynamic>?;
+    return PullRequest(
+      id: n['databaseId'] as int,
+      number: n['number'] as int,
+      title: n['title'] as String? ?? '',
+      htmlUrl: n['url'] as String? ?? '',
+      repoFullName: (n['repository'] as Map<String, dynamic>?)?['nameWithOwner'] as String? ?? '',
+      author: author?['login'] as String? ?? '',
+      authorAvatarUrl: author?['avatarUrl'] as String?,
+      draft: n['isDraft'] as bool? ?? false,
+      createdAt: DateTime.tryParse(n['createdAt'] as String? ?? '') ?? DateTime.now(),
+      updatedAt: DateTime.tryParse(n['updatedAt'] as String? ?? '') ?? DateTime.now(),
+      requestedFrom: requestedFrom,
+    );
+  }
+
   PullRequest mergeTargets(PullRequest other) => PullRequest(
         id: id,
         number: number,

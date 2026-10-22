@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../services/app_log.dart';
 import '../services/github_service.dart';
 import '../services/settings_service.dart';
 import '../services/watcher_service.dart';
@@ -104,6 +105,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } finally {
       if (mounted) setState(() => _testing = false);
     }
+  }
+
+  Future<void> _openLog() async {
+    final path = AppLog.instance.path;
+    if (path == null) return setState(() => _error = 'Log file unavailable');
+    AppLog.instance.info('log opened from settings');
+    await WatcherService.openUrl(Uri.file(path).toString());
   }
 
   Future<void> _save() async {
@@ -340,6 +348,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
       child: Row(
         children: [
+          TextButton.icon(
+            onPressed: _openLog,
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              foregroundColor: const Color(0xFF6B7280),
+            ),
+            icon: const Icon(Icons.article_outlined, size: 14),
+            label: Text('Log', style: GoogleFonts.inter(fontSize: 12)),
+          ),
           TextButton.icon(
             onPressed: WatcherService.quitApp,
             style: TextButton.styleFrom(

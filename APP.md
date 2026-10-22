@@ -63,5 +63,8 @@ Sign-In and Security > App-Specific Passwords.
   via `KeychainStore` in `AppDelegate.swift`. Debug builds are ad hoc signed,
   so each rebuild is a new code signature and macOS may prompt to allow
   keychain access; the Developer ID release build has a stable identity.
+- **Log**: `Application Support/gnotify.log` inside the sandbox container,
+  rotated at 1 MB; opened via the Log button in Settings (NSWorkspace open on
+  the file URL)
 - **Notifications**: `UNUserNotificationCenter`; clicking one opens the PR URL
 - **Launch at login**: `SMAppService` (macOS 13+), prompted once on first launch

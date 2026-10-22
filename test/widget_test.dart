@@ -93,6 +93,40 @@ void main() {
     expect(reviewed.state, ReviewState.awaiting);
   });
 
+  test('pollQuery covers own PRs and every target in one search', () {
+    final q = GitHubService.pollQuery(org: 'acme', targets: ['jasondcamp', '@acme/platform']);
+    expect(q, 'org:acme is:pr is:open ((author:@me) OR (-author:@me draft:false (review-requested:jasondcamp OR team-review-requested:acme/platform)))');
+    expect(GitHubService.pollQuery(org: 'acme', targets: []), 'org:acme is:pr is:open ((author:@me))');
+  });
+
+  test('GraphQL node parses into a PullRequest with direct reviewers', () {
+    final node = <String, dynamic>{
+      '__typename': 'PullRequest',
+      'databaseId': 77,
+      'number': 12,
+      'title': 'Add thing',
+      'url': 'https://github.com/acme/widgets/pull/12',
+      'isDraft': false,
+      'createdAt': '2026-10-01T00:00:00Z',
+      'updatedAt': '2026-10-02T00:00:00Z',
+      'author': {'login': 'octocat', 'avatarUrl': 'https://avatars.githubusercontent.com/u/1?v=4'},
+      'repository': {'nameWithOwner': 'acme/widgets'},
+      'reviewRequests': {
+        'nodes': [
+          {'requestedReviewer': {'__typename': 'Team', 'slug': 'platform', 'organization': {'login': 'acme'}}},
+          {'requestedReviewer': {'__typename': 'Bot', 'login': 'copilot-pull-request-reviewer'}},
+        ]
+      },
+    };
+    final reviewers = RequestedReviewers.fromGraphNodes((node['reviewRequests'] as Map)['nodes'] as List);
+    expect(reviewers.teams, {'acme/platform'});
+    expect(reviewers.users, {'copilot-pull-request-reviewer'});
+    final pr = PullRequest.fromGraphNode(node, requestedFrom: reviewers.resolve(['jasondcamp', 'acme/platform']));
+    expect(pr.id, 77);
+    expect(pr.repoName, 'widgets');
+    expect(pr.requestedFrom, {'acme/platform'});
+  });
+
   test('latestApprovers keeps only reviewers whose last decision is approval', () {
     final approvers = GitHubService.latestApprovers([
       _review('alice', 'APPROVED'),

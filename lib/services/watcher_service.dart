@@ -1,44 +1,49 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../models/pull_request.dart';
+import 'app_log.dart';
 import 'github_service.dart';
 import 'settings_service.dart';
 
-/// Polls GitHub on an interval, keeps the current list of PRs awaiting
-/// review, pushes the badge count to the menubar and fires a notification
-/// the first time each PR shows up.
+/// Polls GitHub on an interval with a single request per tick, keeps both
+/// tabs' lists, pushes the badge count to the menubar, and announces review
+/// requests, approvals and Copilot reviews once each.
 class WatcherService extends ChangeNotifier {
   static const _channel = MethodChannel('com.jasoncamp.gnotify/menubar');
 
+  /// Popover opens and other soft triggers are ignored this soon after a poll.
+  static const _debounce = Duration(seconds: 10);
+  static const _minBackoff = Duration(seconds: 60);
+  static const _maxBackoff = Duration(minutes: 15);
+
   final GitHubService github;
   final SettingsService settingsService;
+  final AppLog _log = AppLog.instance;
 
   WatcherService({required this.github, required this.settingsService});
 
   Timer? _timer;
   bool _polling = false;
+  DateTime? _lastPollAt;
+
   Set<int> _notifiedIds = {};
   Set<int> _approvedIds = {};
-
-  /// True until the approved set has been recorded once. The first pass after
-  /// install, or after the approvals toggle is switched on, only records what
-  /// is already approved instead of announcing all of it.
-  bool _approvalsNeedBaseline = true;
-  bool _lastNotifyApprovals = true;
-
-  /// Requested reviewers per PR id, keyed on the PR's updated_at so a PR is
-  /// only re-fetched when it changes.
-  final Map<int, ({DateTime updatedAt, RequestedReviewers reviewers})> _reviewerCache = {};
-
-  /// Review decisions and outstanding requests for the user's own PRs,
-  /// likewise keyed on updated_at.
-  final Map<int, ({DateTime updatedAt, Map<String, String> decisions, Set<int> copilotReviews, RequestedReviewers reviewers})>
-      _ownPrCache = {};
-
   Set<int> _copilotSeenIds = {};
+
+  /// Silent first pass for approvals / Copilot after install or re-enable.
+  bool _approvalsNeedBaseline = true;
   bool _copilotNeedBaseline = true;
+  bool _lastNotifyApprovals = true;
   bool _lastNotifyCopilot = true;
+
+  /// Set when persisted ids predate the current id scheme; the next
+  /// successful poll records everything silently instead of announcing it.
+  bool _idsNeedRebaseline = false;
+
+  DateTime? _backoffUntil;
+  int _backoffStrikes = 0;
 
   List<PullRequest> _pullRequests = const [];
   List<PullRequest> get pullRequests => _pullRequests;
@@ -46,8 +51,13 @@ class WatcherService extends ChangeNotifier {
   List<OwnPullRequest> _myPullRequests = const [];
   List<OwnPullRequest> get myPullRequests => _myPullRequests;
 
+  RateLimitInfo? _rateLimit;
+  RateLimitInfo? get rateLimit => _rateLimit;
+
   DateTime? _lastUpdated;
   DateTime? get lastUpdated => _lastUpdated;
+
+  DateTime? get backoffUntil => _backoffUntil;
 
   String? _error;
   String? get error => _error;
@@ -63,14 +73,22 @@ class WatcherService extends ChangeNotifier {
     final approved = await settingsService.loadApprovedIds();
     _approvedIds = approved ?? {};
     _approvalsNeedBaseline = approved == null;
-    _lastNotifyApprovals = settingsService.settings.notifyApprovals;
     final copilotSeen = await settingsService.loadCopilotReviewIds();
     _copilotSeenIds = copilotSeen ?? {};
     _copilotNeedBaseline = copilotSeen == null;
-    _lastNotifyCopilot = settingsService.settings.notifyCopilotReviews;
+    final s = settingsService.settings;
+    _lastNotifyApprovals = s.notifyApprovals;
+    _lastNotifyCopilot = s.notifyCopilotReviews;
+
+    final idsVersion = await settingsService.loadIdsVersion();
+    _idsNeedRebaseline = idsVersion < SettingsService.currentIdsVersion;
+    if (_idsNeedRebaseline) {
+      _log.info('id scheme $idsVersion -> ${SettingsService.currentIdsVersion}: next poll baselines silently');
+    }
+
     settingsService.addListener(_onSettingsChanged);
     _restartTimer();
-    await refresh();
+    await refresh(force: true);
   }
 
   void _onSettingsChanged() {
@@ -80,8 +98,10 @@ class WatcherService extends ChangeNotifier {
     _lastNotifyApprovals = s.notifyApprovals;
     if (s.notifyCopilotReviews && !_lastNotifyCopilot) _copilotNeedBaseline = true;
     _lastNotifyCopilot = s.notifyCopilotReviews;
+    _backoffUntil = null;
+    _backoffStrikes = 0;
     _restartTimer();
-    refresh();
+    refresh(force: true);
   }
 
   void _restartTimer() {
@@ -90,8 +110,14 @@ class WatcherService extends ChangeNotifier {
     _timer = Timer.periodic(Duration(seconds: seconds), (_) => refresh());
   }
 
-  Future<void> refresh() async {
+  /// [force] skips the debounce (user pressed Refresh, settings changed) but
+  /// never the rate-limit backoff.
+  Future<void> refresh({bool force = false}) async {
     if (_polling) return;
+    final now = DateTime.now();
+    if (_backoffUntil != null && now.isBefore(_backoffUntil!)) return;
+    if (!force && _lastPollAt != null && now.difference(_lastPollAt!) < _debounce) return;
+
     final settings = settingsService.settings;
     github.token = settings.token;
 
@@ -107,65 +133,50 @@ class WatcherService extends ChangeNotifier {
     }
 
     _polling = true;
+    _lastPollAt = now;
     notifyListeners();
 
     try {
-      final merged = <int, PullRequest>{};
-      for (final rawTarget in settings.targets) {
-        final target = _normalizeTarget(rawTarget);
-        final results = await github.searchReviewRequests(org: settings.org, target: target);
-        for (final pr in results) {
-          merged[pr.id] = merged.containsKey(pr.id) ? merged[pr.id]!.mergeTargets(pr) : pr;
-        }
-      }
+      final sw = Stopwatch()..start();
+      final result = await github.poll(org: settings.org, targets: settings.targets);
+      sw.stop();
+      _rateLimit = result.rateLimit;
+      final rl = result.rateLimit;
+      _log.info('poll ok: ${result.requests} request(s) in ${sw.elapsedMilliseconds}ms, '
+          'toReview=${result.toReview.length} mine=${result.mine.length}'
+          '${rl == null ? '' : ', budget ${rl.remaining}/${rl.limit} (cost ${rl.cost})'}');
 
-      final list = <PullRequest>[];
-      for (final pr in merged.values) {
-        list.add(await _withDirectTargets(pr, settings.targets));
-      }
-      list.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-      _reviewerCache.removeWhere((id, _) => !merged.containsKey(id));
-
-      final currentIds = list.map((p) => p.id).toSet();
-      final fresh = list.where((p) => !_notifiedIds.contains(p.id)).toList();
-
-      // Forget PRs that left the list so a re-requested review notifies again.
-      _notifiedIds = _notifiedIds.intersection(currentIds);
-
-      _pullRequests = list;
+      _pullRequests = result.toReview;
+      _myPullRequests = result.mine;
       _lastUpdated = DateTime.now();
       _error = null;
       _errorDetail = null;
+      _backoffUntil = null;
+      _backoffStrikes = 0;
 
-      _pushBadge(list.length);
-      final label = list.length == 1 ? '1 PR awaiting review' : '${list.length} PRs awaiting review';
-      _pushTooltip('gnotify - $label');
+      _pushBadge(_pullRequests.length);
+      final n = _pullRequests.length;
+      _pushTooltip('gnotify - ${n == 1 ? '1 PR awaiting review' : '$n PRs awaiting review'}');
 
-      // Seen ids are tracked even with notifications off, so switching them
-      // on later only announces PRs that arrive after that point.
-      for (final pr in fresh) {
-        if (settings.notifyReviewRequests) await _notify(pr);
-        _notifiedIds.add(pr.id);
+      if (_idsNeedRebaseline) {
+        _notifiedIds = _pullRequests.map((p) => p.id).toSet();
+        await settingsService.saveNotifiedIds(_notifiedIds);
+        _approvalsNeedBaseline = true;
+        _copilotNeedBaseline = true;
+        _idsNeedRebaseline = false;
+        await settingsService.saveIdsVersion(SettingsService.currentIdsVersion);
+        _log.info('ids rebaselined: ${_notifiedIds.length} review requests recorded silently');
       }
-      if (fresh.isNotEmpty) await settingsService.saveNotifiedIds(_notifiedIds);
 
-      await _refreshMyPullRequests(
-        settings.org,
-        notifyApprovals: settings.notifyApprovals,
-        notifyCopilot: settings.notifyCopilotReviews,
-      );
+      await _announceReviewRequests(_pullRequests, notify: settings.notifyReviewRequests);
+      await _announceCopilotReviews(_myPullRequests, notify: settings.notifyCopilotReviews);
+      await _announceApprovals(_myPullRequests, notify: settings.notifyApprovals);
     } on GitHubException catch (e) {
-      _error = switch (e.statusCode) {
-        401 => 'Token rejected (401)',
-        403 => 'Rate limited or forbidden (403)',
-        422 => 'Token cannot search org ${settings.org}. Check its resource owner and repo access.',
-        _ => 'GitHub error ${e.statusCode}: ${e.message}',
-      };
-      _errorDetail = e.message;
-      _pushTooltip('gnotify - $_error');
+      _handleGitHubError(e, settings.org);
     } catch (e) {
       _error = 'Network error';
       _errorDetail = '$e';
+      _log.warn('poll failed: $e');
       _pushTooltip('gnotify - offline');
     } finally {
       _polling = false;
@@ -173,43 +184,52 @@ class WatcherService extends ChangeNotifier {
     }
   }
 
-  /// Replace the search-derived targets with the ones the PR directly names.
-  /// Falls back to the search result if the PR cannot be read.
-  Future<PullRequest> _withDirectTargets(PullRequest pr, List<String> targets) async {
-    var cached = _reviewerCache[pr.id];
-    if (cached == null || cached.updatedAt != pr.updatedAt) {
-      try {
-        final reviewers = await github.getRequestedReviewers(pr.repoFullName, pr.number);
-        cached = (updatedAt: pr.updatedAt, reviewers: reviewers);
-        _reviewerCache[pr.id] = cached;
-      } catch (e) {
-        debugPrint('requested reviewers for ${pr.repoFullName}#${pr.number} failed: $e');
-        return pr;
-      }
+  void _handleGitHubError(GitHubException e, String org) {
+    _errorDetail = e.message;
+    if (e.rateLimited) {
+      _backoffStrikes++;
+      final exp = _minBackoff * math.pow(2, _backoffStrikes - 1).toInt();
+      var wait = e.retryAfter ?? exp;
+      if (wait < _minBackoff) wait = _minBackoff;
+      if (wait > _maxBackoff) wait = _maxBackoff;
+      _backoffUntil = DateTime.now().add(wait);
+      final at = _backoffUntil!;
+      final hh = at.hour.toString().padLeft(2, '0');
+      final mm = at.minute.toString().padLeft(2, '0');
+      _error = 'GitHub rate limit, next try at $hh:$mm';
+      _log.warn('rate limited (${e.statusCode}): ${e.message}; '
+          'retryAfter=${e.retryAfter?.inSeconds}s strikes=$_backoffStrikes waiting ${wait.inSeconds}s');
+    } else {
+      _error = switch (e.statusCode) {
+        401 => 'Token rejected (401)',
+        403 => 'Forbidden (403)',
+        422 => 'Token cannot search org $org. Check its resource owner and repo access.',
+        _ => 'GitHub error ${e.statusCode}: ${e.message}',
+      };
+      _log.warn('poll failed (${e.statusCode}): ${e.message}');
     }
-    final normalized = targets.map(_normalizeTarget);
-    return pr.withRequestedFrom(cached.reviewers.resolve(normalized));
+    _pushTooltip('gnotify - $_error');
   }
 
-  /// Rebuild the My PRs tab and announce newly approved ones. Approval is
-  /// announced once per PR while it stays approved; a PR that drops out
-  /// (merged, closed, approval dismissed) and comes back is announced again.
-  Future<void> _refreshMyPullRequests(
-    String org, {
-    required bool notifyApprovals,
-    required bool notifyCopilot,
-  }) async {
-    final mine = await github.searchMyOpenPrs(org: org);
-    final own = <OwnPullRequest>[];
-    for (final pr in mine) {
-      own.add(await _deriveOwn(pr));
+  /// Seen ids are tracked even with notifications off, so switching them on
+  /// later only announces PRs that arrive after that point. A PR that leaves
+  /// the list and comes back (review re-requested) is announced again.
+  Future<void> _announceReviewRequests(List<PullRequest> list, {required bool notify}) async {
+    final currentIds = list.map((p) => p.id).toSet();
+    final fresh = list.where((p) => !_notifiedIds.contains(p.id)).toList();
+    _notifiedIds = _notifiedIds.intersection(currentIds);
+    for (final pr in fresh) {
+      if (notify) {
+        await _notifyRaw(
+          id: 'pr-${pr.id}',
+          title: 'Review requested: ${pr.repoName} #${pr.number}',
+          body: '${pr.title} — by ${pr.author}',
+          url: pr.htmlUrl,
+        );
+      }
+      _notifiedIds.add(pr.id);
     }
-    own.sort((a, b) => b.pr.updatedAt.compareTo(a.pr.updatedAt));
-    _ownPrCache.removeWhere((id, _) => !mine.any((p) => p.id == id));
-    _myPullRequests = own;
-
-    await _announceCopilotReviews(own, notify: notifyCopilot);
-    await _announceApprovals(own, notify: notifyApprovals);
+    if (fresh.isNotEmpty) await settingsService.saveNotifiedIds(_notifiedIds);
   }
 
   /// Copilot reviews are announced once per review id. Ids are kept while the
@@ -270,62 +290,17 @@ class WatcherService extends ChangeNotifier {
     if (fresh.isNotEmpty) await settingsService.saveApprovedIds(_approvedIds);
   }
 
-  Future<OwnPullRequest> _deriveOwn(PullRequest pr) async {
-    var cached = _ownPrCache[pr.id];
-    if (cached == null || cached.updatedAt != pr.updatedAt) {
-      try {
-        final reviews = await github.getReviews(pr.repoFullName, pr.number);
-        final reviewers = await github.getRequestedReviewers(pr.repoFullName, pr.number);
-        cached = (
-          updatedAt: pr.updatedAt,
-          decisions: GitHubService.latestDecisions(reviews),
-          copilotReviews: GitHubService.copilotReviewIds(reviews),
-          reviewers: reviewers,
-        );
-        _ownPrCache[pr.id] = cached;
-      } catch (e) {
-        debugPrint('own PR details for ${pr.repoFullName}#${pr.number} failed: $e');
-        return OwnPullRequest.derive(pr: pr, latestDecisions: const {}, pendingReviewers: const {});
-      }
-    }
-    return OwnPullRequest.derive(
-      pr: pr,
-      latestDecisions: cached.decisions,
-      pendingReviewers: {...cached.reviewers.users, ...cached.reviewers.teams},
-      copilotReviewIds: cached.copilotReviews,
-    );
-  }
-
-  /// `@org/team` loses its `@`; everything else passes through. A target with
-  /// a `/` is a team slug, anything else is a username.
-  static String _normalizeTarget(String raw) {
-    var t = raw.trim();
-    if (t.startsWith('@')) t = t.substring(1);
-    return t;
-  }
-
-  Future<void> _notify(PullRequest pr) => _notifyRaw(
-        id: 'pr-${pr.id}',
-        title: 'Review requested: ${pr.repoName} #${pr.number}',
-        body: '${pr.title} — by ${pr.author}',
-        url: pr.htmlUrl,
-      );
-
   Future<void> _notifyRaw({
     required String id,
     required String title,
     required String body,
     required String url,
   }) async {
+    _log.info('notify: $title');
     try {
-      await _channel.invokeMethod('notify', {
-        'id': id,
-        'title': title,
-        'body': body,
-        'url': url,
-      });
+      await _channel.invokeMethod('notify', {'id': id, 'title': title, 'body': body, 'url': url});
     } catch (e) {
-      debugPrint('notify failed: $e');
+      _log.warn('notify failed: $e');
     }
   }
 
