@@ -16,6 +16,12 @@ class WatcherService extends ChangeNotifier {
   /// Popover opens and other soft triggers are ignored this soon after a poll.
   static const _debounce = Duration(seconds: 10);
   static const _minBackoff = Duration(seconds: 60);
+
+  /// An announced PR is forgotten only after it has been absent from this
+  /// many consecutive polls. GitHub's search index occasionally returns a
+  /// blank or partial result; forgetting on the first miss replayed every
+  /// notification when the next poll came back full.
+  static const forgetAfterPolls = 5;
   static const _maxBackoff = Duration(minutes: 15);
 
   final GitHubService github;
@@ -31,6 +37,10 @@ class WatcherService extends ChangeNotifier {
   Set<int> _notifiedIds = {};
   Set<int> _approvedIds = {};
   Set<int> _copilotSeenIds = {};
+  final Map<int, int> _missingNotified = {};
+  final Map<int, int> _missingApproved = {};
+  final Map<int, int> _missingCopilot = {};
+  int _lastTotal = 0;
 
   /// Silent first pass for approvals / Copilot after install or re-enable.
   bool _approvalsNeedBaseline = true;
@@ -146,6 +156,13 @@ class WatcherService extends ChangeNotifier {
           'toReview=${result.toReview.length} mine=${result.mine.length}'
           '${rl == null ? '' : ', budget ${rl.remaining}/${rl.limit} (cost ${rl.cost})'}');
 
+      final total = result.toReview.length + result.mine.length;
+      if (total == 0 && _lastTotal > 0) {
+        _log.warn('empty result after $_lastTotal PRs last poll; announced ids are kept for '
+            '$forgetAfterPolls polls in case the search index blinked');
+      }
+      _lastTotal = total;
+
       _pullRequests = result.toReview;
       _myPullRequests = result.mine;
       _lastUpdated = DateTime.now();
@@ -160,6 +177,7 @@ class WatcherService extends ChangeNotifier {
 
       if (_idsNeedRebaseline) {
         _notifiedIds = _pullRequests.map((p) => p.id).toSet();
+        _missingNotified.clear();
         await settingsService.saveNotifiedIds(_notifiedIds);
         _approvalsNeedBaseline = true;
         _copilotNeedBaseline = true;
@@ -217,7 +235,9 @@ class WatcherService extends ChangeNotifier {
   Future<void> _announceReviewRequests(List<PullRequest> list, {required bool notify}) async {
     final currentIds = list.map((p) => p.id).toSet();
     final fresh = list.where((p) => !_notifiedIds.contains(p.id)).toList();
-    _notifiedIds = _notifiedIds.intersection(currentIds);
+    final pruned = pruneSeen(_notifiedIds, currentIds, _missingNotified, forgetAfterPolls);
+    final changed = pruned.length != _notifiedIds.length;
+    _notifiedIds = pruned;
     for (final pr in fresh) {
       if (notify) {
         await _notifyRaw(
@@ -229,21 +249,25 @@ class WatcherService extends ChangeNotifier {
       }
       _notifiedIds.add(pr.id);
     }
-    if (fresh.isNotEmpty) await settingsService.saveNotifiedIds(_notifiedIds);
+    if (fresh.isNotEmpty || changed) await settingsService.saveNotifiedIds(_notifiedIds);
   }
 
-  /// Copilot reviews are announced once per review id. Ids are kept while the
-  /// PR stays open, so a second Copilot pass on the same PR is announced too.
+  /// Copilot is announced once per PR. It re-reviews on every push, so
+  /// per-review announcements would repeat for the life of the PR. A PR that
+  /// leaves the list and comes back is announced again.
   Future<void> _announceCopilotReviews(List<OwnPullRequest> own, {required bool notify}) async {
     final current = <int, OwnPullRequest>{
       for (final o in own)
-        for (final id in o.copilotReviewIds) id: o,
+        if (o.copilotReviewIds.isNotEmpty) o.pr.id: o,
     };
     final fresh = current.keys.where((id) => !_copilotSeenIds.contains(id)).toList();
-    _copilotSeenIds = _copilotSeenIds.intersection(current.keys.toSet());
+    final pruned = pruneSeen(_copilotSeenIds, current.keys.toSet(), _missingCopilot, forgetAfterPolls);
+    final changed = pruned.length != _copilotSeenIds.length;
+    _copilotSeenIds = pruned;
 
     if (_copilotNeedBaseline || !notify) {
       _copilotSeenIds = current.keys.toSet();
+      _missingCopilot.clear();
       if (notify) _copilotNeedBaseline = false;
       await settingsService.saveCopilotReviewIds(_copilotSeenIds);
       return;
@@ -259,19 +283,22 @@ class WatcherService extends ChangeNotifier {
       );
       _copilotSeenIds.add(id);
     }
-    if (fresh.isNotEmpty) await settingsService.saveCopilotReviewIds(_copilotSeenIds);
+    if (fresh.isNotEmpty || changed) await settingsService.saveCopilotReviewIds(_copilotSeenIds);
   }
 
   Future<void> _announceApprovals(List<OwnPullRequest> own, {required bool notify}) async {
     final approved = own.where((o) => o.state == ReviewState.approved).toList();
     final currentIds = approved.map((o) => o.pr.id).toSet();
     final fresh = approved.where((o) => !_approvedIds.contains(o.pr.id)).toList();
-    _approvedIds = _approvedIds.intersection(currentIds);
+    final pruned = pruneSeen(_approvedIds, currentIds, _missingApproved, forgetAfterPolls);
+    final changed = pruned.length != _approvedIds.length;
+    _approvedIds = pruned;
 
     if (_approvalsNeedBaseline || !notify) {
       // Record without announcing: first run, toggle just switched on, or
       // approvals muted. Keeps a later switch-on from replaying old approvals.
       _approvedIds = currentIds;
+      _missingApproved.clear();
       if (notify) _approvalsNeedBaseline = false;
       await settingsService.saveApprovedIds(_approvedIds);
       return;
@@ -287,7 +314,29 @@ class WatcherService extends ChangeNotifier {
       );
       _approvedIds.add(o.pr.id);
     }
-    if (fresh.isNotEmpty) await settingsService.saveApprovedIds(_approvedIds);
+    if (fresh.isNotEmpty || changed) await settingsService.saveApprovedIds(_approvedIds);
+  }
+
+  /// Drops ids from [seen] only once they have been absent from [current]
+  /// for [threshold] consecutive calls. [missing] carries the per-id miss
+  /// count between calls and is kept in step with [seen].
+  static Set<int> pruneSeen(Set<int> seen, Set<int> current, Map<int, int> missing, int threshold) {
+    for (final id in seen) {
+      if (current.contains(id)) {
+        missing.remove(id);
+      } else {
+        missing[id] = (missing[id] ?? 0) + 1;
+      }
+    }
+    missing.removeWhere((id, _) => !seen.contains(id));
+    final drop = {
+      for (final e in missing.entries)
+        if (e.value >= threshold) e.key,
+    };
+    for (final id in drop) {
+      missing.remove(id);
+    }
+    return seen.difference(drop);
   }
 
   Future<void> _notifyRaw({

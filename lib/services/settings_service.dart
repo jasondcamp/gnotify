@@ -68,8 +68,9 @@ class SettingsService extends ChangeNotifier {
 
   /// Bumped when the meaning of the persisted PR/review ids changes, so the
   /// watcher can take one silent baseline instead of re-announcing everything.
-  /// 1: REST issue ids (through 1.0.6). 2: GraphQL databaseIds.
-  static const currentIdsVersion = 2;
+  /// 1: REST issue ids (through 1.0.6). 2: GraphQL databaseIds (1.0.7).
+  /// 3: Copilot set holds PR ids instead of review ids.
+  static const currentIdsVersion = 3;
 
   final SecureStore _secure = SecureStore();
 
