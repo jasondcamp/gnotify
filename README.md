@@ -64,6 +64,12 @@ belongs to. The To Review count is pushed to the menubar, and any PR not seen
 before gets a notification. A PR whose state becomes Approved, or that picks
 up a Copilot review, is announced once.
 
+Announced PRs are forgotten only after they have been missing from five
+consecutive polls, because GitHub's search index occasionally returns a blank
+or partial result; forgetting on the first miss replayed every notification.
+Copilot is announced once per PR, not once per review, since it re-reviews on
+every push.
+
 If GitHub answers with a rate limit, the app waits as long as it was told (at
 least a minute, doubling on repeat, capped at 15 minutes) before trying again,
 and popover opens within 10 seconds of the last poll do not trigger another.

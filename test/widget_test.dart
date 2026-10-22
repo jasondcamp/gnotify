@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gnotify/models/pull_request.dart';
 import 'package:gnotify/services/github_service.dart';
+import 'package:gnotify/services/watcher_service.dart';
 
 void main() {
   test('PullRequest parses a search item', () {
@@ -125,6 +126,24 @@ void main() {
     expect(pr.id, 77);
     expect(pr.repoName, 'widgets');
     expect(pr.requestedFrom, {'acme/platform'});
+  });
+
+  test('pruneSeen forgets an id only after it has been missing for the threshold', () {
+    final missing = <int, int>{};
+    var seen = {1, 2, 3};
+    // one blank poll: nothing is forgotten
+    seen = WatcherService.pruneSeen(seen, {}, missing, 3);
+    expect(seen, {1, 2, 3});
+    // 2 comes back; its miss count resets, the others keep counting
+    seen = WatcherService.pruneSeen(seen, {2}, missing, 3);
+    expect(seen, {1, 2, 3});
+    seen = WatcherService.pruneSeen(seen, {2}, missing, 3);
+    expect(seen, {2}, reason: '1 and 3 missed three polls in a row');
+    expect(missing.keys, isEmpty);
+    // a fresh miss for 2 starts from one again
+    seen = WatcherService.pruneSeen(seen, {}, missing, 3);
+    expect(seen, {2});
+    expect(missing[2], 1);
   });
 
   test('latestApprovers keeps only reviewers whose last decision is approval', () {
