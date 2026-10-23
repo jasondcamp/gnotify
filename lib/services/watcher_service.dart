@@ -69,6 +69,10 @@ class WatcherService extends ChangeNotifier {
 
   DateTime? get backoffUntil => _backoffUntil;
 
+  /// Non-fatal problem with the last poll, e.g. a missing token permission.
+  String? _warning;
+  String? get warning => _warning;
+
   String? _error;
   String? get error => _error;
 
@@ -151,6 +155,7 @@ class WatcherService extends ChangeNotifier {
       final result = await github.poll(org: settings.org, targets: settings.targets);
       sw.stop();
       _rateLimit = result.rateLimit;
+      _warning = github.lastPartialWarning;
       final rl = result.rateLimit;
       _log.info('poll ok: ${result.requests} request(s) in ${sw.elapsedMilliseconds}ms, '
           'toReview=${result.toReview.length} mine=${result.mine.length}'

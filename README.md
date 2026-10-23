@@ -23,7 +23,9 @@ Built with Flutter, following the same layout as the twickets menubar app.
    - **Classic PAT**: scopes `repo` and `read:org`.
    - **Fine-grained PAT**: set **Resource owner** to the organization (not your
      personal account), grant **Pull requests: Read** on the repos to watch, and
-     **Members: Read** on the org for team queries. If the org restricts
+     **Members: Read** on the org. Without it, searches still work but GitHub
+     answers "Resource not accessible by personal access token" for each team
+     it is asked about, team chips go missing, and the popover footer says so. If the org restricts
      fine-grained tokens, an org owner has to approve it. A token issued under
      your personal account can read the org's metadata but every org-scoped
      search returns 422 "The listed users and repositories cannot be searched".
