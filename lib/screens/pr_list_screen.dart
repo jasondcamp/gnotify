@@ -428,6 +428,8 @@ class _PrRow extends StatelessWidget {
                         ),
                       ),
                     ),
+                    const Spacer(),
+                    _UnresolvedCount(pr.unresolvedThreads),
                   ],
                 ),
               ],
@@ -599,8 +601,34 @@ class _OwnPrRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              _UnresolvedCount(pr.unresolvedThreads),
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "3" and a comment bubble, right-aligned on a row; nothing when zero.
+class _UnresolvedCount extends StatelessWidget {
+  final int count;
+  const _UnresolvedCount(this.count);
+
+  @override
+  Widget build(BuildContext context) {
+    if (count <= 0) return const SizedBox.shrink();
+    return Tooltip(
+      message: count == 1 ? '1 unresolved comment thread' : '$count unresolved comment threads',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '$count',
+            style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF6B7280)),
+          ),
+          const SizedBox(width: 3),
+          const Icon(Icons.chat_bubble_outline, size: 12, color: Color(0xFF9CA3AF)),
         ],
       ),
     );

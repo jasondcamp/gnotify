@@ -8,6 +8,7 @@ macOS menubar app that watches GitHub and tells you when a pull request needs yo
   it in the browser. Your own PRs never appear here.
 - **My PRs** tab: every open PR you authored in the org, with Approved /
   Changes requested / Awaiting review / Draft and who said or was asked what.
+- Each row shows its count of unresolved review comment threads at the right.
 - **Approval alerts** when a PR you opened in the org gets an approving review.
 - **Copilot alerts** when Copilot code review finishes on a PR you opened. The
   My PRs tab also shows "Copilot reviewing" / "Copilot reviewed".

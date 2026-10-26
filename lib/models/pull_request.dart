@@ -13,6 +13,10 @@ class PullRequest {
   /// Which configured targets (user or team) this PR is requesting review from.
   final Set<String> requestedFrom;
 
+  /// Review threads not yet marked resolved. Conversation comments are not
+  /// counted; they have no resolved state.
+  final int unresolvedThreads;
+
   const PullRequest({
     required this.id,
     required this.number,
@@ -25,6 +29,7 @@ class PullRequest {
     required this.createdAt,
     required this.updatedAt,
     required this.requestedFrom,
+    this.unresolvedThreads = 0,
   });
 
   /// Parses an item from the GitHub search API (`/search/issues`).
@@ -62,7 +67,14 @@ class PullRequest {
       createdAt: DateTime.tryParse(n['createdAt'] as String? ?? '') ?? DateTime.now(),
       updatedAt: DateTime.tryParse(n['updatedAt'] as String? ?? '') ?? DateTime.now(),
       requestedFrom: requestedFrom,
+      unresolvedThreads: _unresolved(n['reviewThreads']),
     );
+  }
+
+  static int _unresolved(dynamic threads) {
+    final nodes = (threads as Map<String, dynamic>?)?['nodes'] as List?;
+    if (nodes == null) return 0;
+    return nodes.whereType<Map<String, dynamic>>().where((t) => t['isResolved'] != true).length;
   }
 
   PullRequest mergeTargets(PullRequest other) => PullRequest(
@@ -77,6 +89,7 @@ class PullRequest {
         createdAt: createdAt,
         updatedAt: updatedAt,
         requestedFrom: {...requestedFrom, ...other.requestedFrom},
+        unresolvedThreads: unresolvedThreads,
       );
 
   PullRequest withRequestedFrom(Set<String> targets) => PullRequest(
@@ -91,6 +104,7 @@ class PullRequest {
         createdAt: createdAt,
         updatedAt: updatedAt,
         requestedFrom: targets,
+        unresolvedThreads: unresolvedThreads,
       );
 
   String get repoName => repoFullName.contains('/') ? repoFullName.split('/').last : repoFullName;
