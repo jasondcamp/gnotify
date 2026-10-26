@@ -12,10 +12,9 @@ _Last updated: 2026-10-23, waiting on org approval of the org-owned fine-grained
 - Token lives in the macOS Keychain (`KeychainStore` in AppDelegate), other
   settings in sandboxed UserDefaults. Local log at
   `Application Support/gnotify.log`, opened from Settings → Log.
-- This Mac runs 1.0.9 against a personal-owner token (sees only public batchco
-  PRs; `toReview=0` is expected here). Work laptop runs 1.0.8 with a token that
-  lacks Members: Read, so team review requests come back as
-  "Resource not accessible by personal access token" (harmless, team chips missing).
+- Token permissions: a fine-grained token without Members: Read on the org
+  still polls fine but cannot read team review requests; the footer and log
+  say so (1.0.9).
 
 ## Recent decisions
 - GraphQL single request instead of REST searches + per-PR calls: the REST
@@ -41,8 +40,5 @@ _Last updated: 2026-10-23, waiting on org approval of the org-owned fine-grained
   screenshot.
 
 ## Open threads
-- Org owner approval of the new org-owned fine-grained PAT (ripberge) with
-  Pull requests: Read + Members: Read. Until then the work laptop shows the
-  Members: Read warning (once on 1.0.9) and team chips are missing.
-- Work laptop should be upgraded 1.0.8 → 1.0.9 for the footer hint.
+- Confirm the Members: Read footer warning clears on a token that has it.
 - Merged feature branches are still on origin and can be deleted.
