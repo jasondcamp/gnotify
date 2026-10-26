@@ -118,6 +118,13 @@ void main() {
           {'requestedReviewer': {'__typename': 'Bot', 'login': 'copilot-pull-request-reviewer'}},
         ]
       },
+      'reviewThreads': {
+        'nodes': [
+          {'isResolved': false},
+          {'isResolved': true},
+          {'isResolved': false},
+        ]
+      },
     };
     final reviewers = RequestedReviewers.fromGraphNodes((node['reviewRequests'] as Map)['nodes'] as List);
     expect(reviewers.teams, {'acme/platform'});
@@ -126,6 +133,7 @@ void main() {
     expect(pr.id, 77);
     expect(pr.repoName, 'widgets');
     expect(pr.requestedFrom, {'acme/platform'});
+    expect(pr.unresolvedThreads, 2);
   });
 
   test('pruneSeen forgets an id only after it has been missing for the threshold', () {

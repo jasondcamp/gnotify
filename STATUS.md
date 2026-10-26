@@ -1,5 +1,5 @@
 # Status
-_Last updated: 2026-10-23, waiting on org approval of the org-owned fine-grained PAT; app at 1.0.9_
+_Last updated: 2026-10-26, unresolved comment-thread counts on both tabs; app at 1.0.10_
 
 ## Current state
 - Released: v1.0.9, notarized DMG + zip on GitHub Releases. Site live at
@@ -7,6 +7,8 @@ _Last updated: 2026-10-23, waiting on org approval of the org-owned fine-grained
 - Polling: one GraphQL `ISSUE_ADVANCED` request per tick covers both tabs with
   requested reviewers and latest reviews; cost 1–2 of a 5,000/hour budget.
   Rate-limit backoff (60 s doubling to 15 min), 10 s debounce on popover opens.
+- Each PR row shows its unresolved review-thread count (right-aligned, with a
+  comment icon), taken from `reviewThreads` in the same poll request.
 - Announced PRs survive blank search results (forgotten after 5 consecutive
   misses). Copilot announced once per PR. Persisted ids are at scheme 3.
 - Token lives in the macOS Keychain (`KeychainStore` in AppDelegate), other
@@ -31,6 +33,8 @@ _Last updated: 2026-10-23, waiting on org approval of the org-owned fine-grained
   mock popover data is fictional so nothing from a real org appears.
 
 ## Known issues
+- `reviewThreads` is fetched 100 per PR, so a PR with more threads than that
+  reports a lower bound.
 - Debug builds are ad hoc signed, so each rebuild triggers a Keychain access
   prompt; release builds (Developer ID) do not.
 - Copilot detection (`login contains "copilot"`) not yet confirmed against a

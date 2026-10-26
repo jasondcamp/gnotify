@@ -176,6 +176,7 @@ query($q: String!, $after: String) {
           ... on Mannequin { login }
         } } }
         latestReviews(first: 50) { nodes { databaseId state author { login } } }
+        reviewThreads(first: 100) { nodes { isResolved } }
       }
     }
   }
