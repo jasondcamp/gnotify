@@ -35,6 +35,8 @@ _Last updated: 2026-10-27, drafts included in To Review; app at 1.0.11_
   mock popover data is fictional so nothing from a real org appears.
 
 ## Known issues
+- A PR the search index returns but the token cannot read is dropped; since
+  1.0.11 the log counts these and the footer hints at repository access.
 - `reviewThreads` is fetched 100 per PR, so a PR with more threads than that
   reports a lower bound.
 - Debug builds are ad hoc signed, so each rebuild triggers a Keychain access
