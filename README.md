@@ -9,6 +9,7 @@ macOS menubar app that watches GitHub and tells you when a pull request needs yo
 - **My PRs** tab: every open PR you authored in the org, with Approved /
   Changes requested / Awaiting review / Draft and who said or was asked what.
 - Each row shows its count of unresolved review comment threads at the right.
+  Draft PRs that request your review are listed too, marked Draft.
 - **Approval alerts** when a PR you opened in the org gets an approving review.
 - **Copilot alerts** when Copilot code review finishes on a PR you opened. The
   My PRs tab also shows "Copilot reviewing" / "Copilot reviewed".
@@ -53,7 +54,7 @@ Every poll is **one GraphQL request** (a second or third only if the org has
 more than 100 matching PRs). The search covers both tabs at once:
 
 ```
-org:<org> is:pr is:open ((author:@me) OR (-author:@me draft:false (review-requested:<user> OR team-review-requested:<org>/<team> ...)))
+org:<org> is:pr is:open ((author:@me) OR (-author:@me (review-requested:<user> OR team-review-requested:<org>/<team> ...)))
 ```
 
 and the same request returns each PR's requested reviewers and every

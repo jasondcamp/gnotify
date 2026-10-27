@@ -96,7 +96,7 @@ void main() {
 
   test('pollQuery covers own PRs and every target in one search', () {
     final q = GitHubService.pollQuery(org: 'acme', targets: ['jasondcamp', '@acme/platform']);
-    expect(q, 'org:acme is:pr is:open ((author:@me) OR (-author:@me draft:false (review-requested:jasondcamp OR team-review-requested:acme/platform)))');
+    expect(q, 'org:acme is:pr is:open ((author:@me) OR (-author:@me (review-requested:jasondcamp OR team-review-requested:acme/platform)))');
     expect(GitHubService.pollQuery(org: 'acme', targets: []), 'org:acme is:pr is:open ((author:@me))');
   });
 

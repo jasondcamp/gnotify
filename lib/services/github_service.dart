@@ -142,8 +142,9 @@ class GitHubService {
   }
 
   /// Builds the one search string that covers both tabs:
-  /// your own open PRs (drafts included), plus open non-draft PRs by others
-  /// that ask one of the targets for review.
+  /// your own open PRs, plus open PRs by others that ask one of the targets
+  /// for review. Drafts are included on both sides: teams here request
+  /// reviews on drafts, and GitHub's own "review requested" view lists them.
   static String pollQuery({required String org, required List<String> targets}) {
     final reqs = targets
         .map((t) => t.trim())
@@ -151,7 +152,7 @@ class GitHubService {
         .map((t) => t.startsWith('@') ? t.substring(1) : t)
         .map((t) => t.contains('/') ? 'team-review-requested:$t' : 'review-requested:$t')
         .join(' OR ');
-    final theirs = reqs.isEmpty ? '' : ' OR (-author:@me draft:false ($reqs))';
+    final theirs = reqs.isEmpty ? '' : ' OR (-author:@me ($reqs))';
     return 'org:$org is:pr is:open ((author:@me)$theirs)';
   }
 
