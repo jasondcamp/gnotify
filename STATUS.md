@@ -1,5 +1,5 @@
 # Status
-_Last updated: 2026-10-26, unresolved comment-thread counts on both tabs; app at 1.0.10_
+_Last updated: 2026-10-27, drafts included in To Review; app at 1.0.11_
 
 ## Current state
 - Released: v1.0.9, notarized DMG + zip on GitHub Releases. Site live at
@@ -19,6 +19,8 @@ _Last updated: 2026-10-26, unresolved comment-thread counts on both tabs; app at
   say so (1.0.9).
 
 ## Recent decisions
+- To Review includes draft PRs (marked Draft): the org requests reviews on
+  drafts, and excluding them hid real requests.
 - GraphQL single request instead of REST searches + per-PR calls: the REST
   pattern tripped GitHub's secondary (burst) limits at 30 s polling.
 - 5-poll grace before forgetting an announced PR: the search index returns a
@@ -33,6 +35,8 @@ _Last updated: 2026-10-26, unresolved comment-thread counts on both tabs; app at
   mock popover data is fictional so nothing from a real org appears.
 
 ## Known issues
+- A PR the search index returns but the token cannot read is dropped; since
+  1.0.11 the log counts these and the footer hints at repository access.
 - `reviewThreads` is fetched 100 per PR, so a PR with more threads than that
   reports a lower bound.
 - Debug builds are ad hoc signed, so each rebuild triggers a Keychain access

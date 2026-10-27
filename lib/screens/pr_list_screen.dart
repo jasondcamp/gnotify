@@ -411,6 +411,23 @@ class _PrRow extends StatelessWidget {
                       style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF6B7280)),
                     ),
                     const SizedBox(width: 6),
+                    if (pr.draft)
+                      Container(
+                        margin: const EdgeInsets.only(right: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3F4F6),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'Draft',
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF6B7280),
+                          ),
+                        ),
+                      ),
                     ...pr.requestedFrom.map(
                       (t) => Container(
                         margin: const EdgeInsets.only(right: 4),

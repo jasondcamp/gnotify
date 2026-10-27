@@ -142,8 +142,9 @@ class GitHubService {
   }
 
   /// Builds the one search string that covers both tabs:
-  /// your own open PRs (drafts included), plus open non-draft PRs by others
-  /// that ask one of the targets for review.
+  /// your own open PRs, plus open PRs by others that ask one of the targets
+  /// for review. Drafts are included on both sides: teams here request
+  /// reviews on drafts, and GitHub's own "review requested" view lists them.
   static String pollQuery({required String org, required List<String> targets}) {
     final reqs = targets
         .map((t) => t.trim())
@@ -151,7 +152,7 @@ class GitHubService {
         .map((t) => t.startsWith('@') ? t.substring(1) : t)
         .map((t) => t.contains('/') ? 'team-review-requested:$t' : 'review-requested:$t')
         .join(' OR ');
-    final theirs = reqs.isEmpty ? '' : ' OR (-author:@me draft:false ($reqs))';
+    final theirs = reqs.isEmpty ? '' : ' OR (-author:@me ($reqs))';
     return 'org:$org is:pr is:open ((author:@me)$theirs)';
   }
 
@@ -192,6 +193,7 @@ query($q: String!, $after: String) {
     RateLimitInfo? rate;
     final nodes = <Map<String, dynamic>>[];
     var requests = 0;
+    var dropped = 0;
 
     do {
       final data = await _graphqlRequest(_document, {'q': q, 'after': after});
@@ -207,16 +209,29 @@ query($q: String!, $after: String) {
         );
       }
       final search = data['search'] as Map<String, dynamic>? ?? const {};
-      nodes.addAll(((search['nodes'] as List?) ?? const []).whereType<Map<String, dynamic>>());
+      final rawNodes = (search['nodes'] as List?) ?? const [];
+      for (final n in rawNodes) {
+        if (n is Map<String, dynamic> && n['__typename'] == 'PullRequest' && n['databaseId'] != null) {
+          nodes.add(n);
+        } else {
+          dropped++;
+        }
+      }
       final page = search['pageInfo'] as Map<String, dynamic>? ?? const {};
       after = page['hasNextPage'] == true ? page['endCursor'] as String? : null;
     } while (after != null && requests < _maxPages);
+
+    if (dropped > 0) {
+      AppLog.instance.warn('poll: $dropped search result(s) came back unreadable and were dropped. '
+          'The search index found them under your account but the token could not open them; '
+          'check the token\'s repository access.');
+      _lastPartialWarning ??= 'Token cannot read $dropped PR(s) the search found. Check its repository access.';
+    }
 
     final me = viewer.toLowerCase();
     final toReview = <PullRequest>[];
     final mine = <OwnPullRequest>[];
     for (final n in nodes) {
-      if (n['__typename'] != 'PullRequest' || n['databaseId'] == null) continue;
       final reviewers = RequestedReviewers.fromGraphNodes(
         ((n['reviewRequests'] as Map<String, dynamic>?)?['nodes'] as List?) ?? const [],
       );
@@ -335,6 +350,8 @@ query($q: String!, $after: String) {
     String warning;
     if (notAccessible && paths.contains('requestedReviewer')) {
       warning = 'Token cannot read team review requests. Add Members: Read on the org.';
+    } else if (notAccessible && RegExp(r'search\.nodes(\s|$)').hasMatch(paths)) {
+      warning = 'Token cannot read some PRs the search found. Check its repository access.';
     } else if (notAccessible) {
       warning = 'Token is missing a permission for part of the data. See the log.';
     } else {
