@@ -1,5 +1,5 @@
 # Status
-_Last updated: 2026-10-27, drafts included in To Review; app at 1.0.11_
+_Last updated: 2026-11-04, drafts styled as provisional; app at 1.0.12_
 
 ## Current state
 - Released: v1.0.9, notarized DMG + zip on GitHub Releases. Site live at
@@ -21,6 +21,8 @@ _Last updated: 2026-10-27, drafts included in To Review; app at 1.0.11_
 ## Recent decisions
 - To Review includes draft PRs (marked Draft): the org requests reviews on
   drafts, and excluding them hid real requests.
+- Draft rows use a dashed outline, washed background and grey title on both
+  tabs: a badge alone was too easy to miss.
 - GraphQL single request instead of REST searches + per-PR calls: the REST
   pattern tripped GitHub's secondary (burst) limits at 30 s polling.
 - 5-poll grace before forgetting an announced PR: the search index returns a

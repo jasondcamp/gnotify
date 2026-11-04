@@ -359,6 +359,7 @@ class _PrRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return _Card(
       onTap: onTap,
+      draft: pr.draft,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -398,7 +399,7 @@ class _PrRow extends StatelessWidget {
                   style: GoogleFonts.inter(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
-                    color: const Color(0xFF1A1A2E),
+                    color: pr.draft ? const Color(0xFF6B7280) : const Color(0xFF1A1A2E),
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -490,7 +491,11 @@ class _Avatar extends StatelessWidget {
 class _Card extends StatefulWidget {
   final VoidCallback onTap;
   final Widget child;
-  const _Card({required this.onTap, required this.child});
+
+  /// Drafts get a dashed outline and a washed-out background so they read
+  /// as provisional before the text is read.
+  final bool draft;
+  const _Card({required this.onTap, required this.child, this.draft = false});
 
   @override
   State<_Card> createState() => _CardState();
@@ -509,22 +514,75 @@ class _CardState extends State<_Card> {
         onExit: (_) => setState(() => _hover = false),
         child: GestureDetector(
           onTap: widget.onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: _hover ? Colors.white : Colors.white.withValues(alpha: 0.6),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: _hover ? const Color(0xFF6366F1) : const Color(0xFFE5E7EB),
-              ),
-            ),
-            child: widget.child,
-          ),
+          child: widget.draft ? _draftCard() : _solidCard(),
         ),
       ),
     );
   }
+
+  Widget _solidCard() {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: _hover ? Colors.white : Colors.white.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: _hover ? const Color(0xFF6366F1) : const Color(0xFFE5E7EB),
+        ),
+      ),
+      child: widget.child,
+    );
+  }
+
+  Widget _draftCard() {
+    return CustomPaint(
+      painter: _DashedBorderPainter(
+        color: _hover ? const Color(0xFF6366F1) : const Color(0xFFB4B8C2),
+        radius: 8,
+      ),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: _hover ? Colors.white.withValues(alpha: 0.7) : Colors.white.withValues(alpha: 0.25),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// 1 px dashed rounded rectangle, used only for draft cards.
+class _DashedBorderPainter extends CustomPainter {
+  final Color color;
+  final double radius;
+  const _DashedBorderPainter({required this.color, required this.radius});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    final rrect = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      Radius.circular(radius),
+    ).deflate(0.6);
+    final path = Path()..addRRect(rrect);
+    const dash = 5.0, gap = 4.0;
+    for (final metric in path.computeMetrics()) {
+      var d = 0.0;
+      while (d < metric.length) {
+        canvas.drawPath(metric.extractPath(d, (d + dash).clamp(0, metric.length)), paint);
+        d += dash + gap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedBorderPainter old) => old.color != color || old.radius != radius;
 }
 
 class _OwnPrRow extends StatelessWidget {
@@ -557,6 +615,7 @@ class _OwnPrRow extends StatelessWidget {
 
     return _Card(
       onTap: onTap,
+      draft: pr.draft,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -590,7 +649,7 @@ class _OwnPrRow extends StatelessWidget {
             style: GoogleFonts.inter(
               fontSize: 13,
               fontWeight: FontWeight.w500,
-              color: const Color(0xFF1A1A2E),
+              color: pr.draft ? const Color(0xFF6B7280) : const Color(0xFF1A1A2E),
             ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
